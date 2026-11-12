@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FileManager</title>
+  <link rel="stylesheet" href="/css/app.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📁</text></svg>">
+</head>
+<body>
+  <div id="toasts"></div>
+
+  <!-- login -->
+  <div id="login-screen" class="login-screen hidden">
+    <form id="login-form" class="login-card">
+      <div class="login-logo">📁</div>
+      <h1>FileManager</h1>
+      <p class="login-sub">Encrypted session · keys in memory only</p>
+      <input id="login-user" type="text" placeholder="Username" autocomplete="username" required>
+      <input id="login-pass" type="password" placeholder="Password" autocomplete="current-password" required>
+      <button type="submit">Sign in</button>
+      <div id="login-error" class="login-error"></div>
+    </form>
+  </div>
+
+  <!-- app -->
+  <div id="app" class="app hidden">
+    <header class="topbar">
+      <div class="brand"><span class="brand-ic">📁</span> <span id="title">FileManager</span>
+        <span id="ro-badge" class="badge hidden">read-only</span>
+      </div>
+      <div class="searchwrap"><input id="search" type="search" placeholder="Search in folder…"></div>
+      <div class="userbox">
+        <span id="whoami" class="whoami"></span>
+        <button id="btn-logout" class="ghost" title="Logout">⎋</button>
+      </div>
+    </header>
+
+    <div class="toolbar">
+      <nav id="breadcrumb" class="breadcrumb"></nav>
+      <div id="tb-write" class="tb-actions">
+        <button id="btn-newfolder" class="btn">＋ Folder</button>
+        <button id="btn-newfile" class="btn">＋ File</button>
+        <button id="btn-upload" class="btn primary">⬆ Upload</button>
+        <input id="fileinput" type="file" multiple class="hidden">
+      </div>
+    </div>
+
+    <div id="batchbar" class="batchbar hidden">
+      <span><b id="batchcount">0</b> selected</span>
+      <button id="batch-zip" class="btn">🗜 Zip</button>
+      <button id="batch-delete" class="btn danger">🗑 Delete</button>
+    </div>
+
+    <main class="listing">
+      <table class="filetable">
+        <thead>
+          <tr>
+            <th class="cbcol"></th>
+            <th>Name</th><th>Size</th><th>Modified</th><th>Perms</th><th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="filelist"></tbody>
+      </table>
+    </main>
+
+    <footer class="statusbar">
+      <span id="summary"></span>
+      <span id="upstatus" class="upstatus"></span>
+      <span class="lock">🔒 ECDH + AES-256-GCM</span>
+    </footer>
+  </div>
+
+  <!-- editor modal -->
+  <div id="editor-modal" class="modal hidden">
+    <div class="modal-card editor">
+      <div class="modal-head">
+        <span id="editor-name"></span>
+        <div>
+          <button id="editor-save" class="btn primary">Save</button>
+          <button id="editor-close" class="btn">Close</button>
+        </div>
+      </div>
+      <textarea id="editor-text" spellcheck="false"></textarea>
+    </div>
+  </div>
+
+  <div id="droparea" class="droparea">Drop files to upload</div>
+
+  <script src="/js/crypto.js"></script>
+  <script src="/js/api.js"></script>
+  <script src="/js/app.js"></script>
+</body>
+</html>
