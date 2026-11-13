@@ -26,6 +26,7 @@ import (
 	"github.com/helviojunior/nullops/pkg/crypto"
 	"github.com/helviojunior/nullops/pkg/fileops"
 	"github.com/helviojunior/nullops/pkg/pads"
+	"github.com/helviojunior/nullops/pkg/pathref"
 	"github.com/helviojunior/nullops/pkg/session"
 	"github.com/helviojunior/nullops/pkg/uploadreq"
 )
@@ -64,8 +65,12 @@ func newEnv(t *testing.T, mutate func(*Config)) *env {
 	if err != nil {
 		t.Fatal(err)
 	}
+	refs, err := pathref.Open(st.DB())
+	if err != nil {
+		t.Fatal(err)
+	}
 	cfg := Config{Users: users, FS: fsys, Sessions: st, SessionTTL: time.Hour, Title: "test",
-		Pads: pads.NewManager(padStore), UploadReqs: reqs}
+		Pads: pads.NewManager(padStore), UploadReqs: reqs, PathRefs: refs}
 	if mutate != nil {
 		mutate(&cfg)
 	}
@@ -478,4 +483,40 @@ func TestPublicUploadLink(t *testing.T) {
 		t.Fatalf("no lockout: %v", r)
 	}
 	_ = uploadreq.Validity
+}
+
+func TestPathRefs(t *testing.T) {
+	e := newEnv(t, nil)
+	os.MkdirAll(filepath.Join(e.root, "VMWare", "ELK"), 0o755)
+	os.WriteFile(filepath.Join(e.root, "VMWare", "ELK", "disk.vmdk"), []byte("x"), 0o644)
+
+	anon := e.connect()
+	if r := anon.call("path_resolve", map[string]string{"ref": "AAAAAAAAAAAAAAAA"}); r["_status"] != float64(401) {
+		t.Fatalf("unauthenticated resolve: %v", r)
+	}
+	c := e.connect()
+	c.login("alice", "alicepass1")
+	r := c.call("list", map[string]string{"path": "VMWare/ELK"})
+	res := r["result"].(map[string]any)
+	ref, _ := res["ref"].(string)
+	crumbs, _ := res["crumbs"].([]any)
+	entries, _ := res["entries"].([]any)
+	if !pathref.Valid(ref) || len(crumbs) != 2 || len(entries) != 1 {
+		t.Fatalf("list refs: %v", res)
+	}
+	fileRef := entries[0].(map[string]any)["ref"].(string)
+	if strings.Contains(fileRef, "disk") || !pathref.Valid(fileRef) {
+		t.Fatalf("file ref %q", fileRef)
+	}
+	got := c.call("path_resolve", map[string]string{"ref": fileRef})["result"].(map[string]any)
+	if got["path"] != "VMWare/ELK/disk.vmdk" || len(got["crumbs"].([]any)) != 3 {
+		t.Fatalf("resolve: %v", got)
+	}
+	if r := c.call("path_resolve", map[string]string{"ref": "AAAAAAAAAAAAAAAA"}); r["ok"] != false {
+		t.Fatalf("unknown ref: %v", r)
+	}
+	m := c.call("path_refs", map[string]any{"paths": []string{"VMWare/ELK"}})["result"].(map[string]any)
+	if m["refs"].(map[string]any)["VMWare/ELK"] != ref {
+		t.Fatalf("path_refs: %v", m)
+	}
 }

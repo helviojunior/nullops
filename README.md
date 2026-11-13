@@ -11,6 +11,7 @@ nullops web -r /data -b 0.0.0.0 -p 8443
 - **Single binary**: front-end embedded (zip + AES-256-GCM), never extracted to disk.
 - **Encrypted `/api` channel**: ECDH P-256 → HKDF-SHA256 → AES-256-GCM, one key per session.
 - **Persistent sessions**: valid for 12 hours after login, surviving page reloads and server restarts.
+- **No paths in the address bar**: URLs carry an opaque ref (`/files/dDYdoS93PvxSZAnT`), never a folder or file name.
 - **HTTPS by default**, with a self-signed certificate generated on the first run.
 - **Pure Go server** (`net/http`).
 
@@ -182,6 +183,18 @@ the whole buffer). `text/*` opens in the viewer/editor (read-only accounts get
 the viewer); anything else is downloaded. The extension list is only used as a
 fallback if the probe fails. UTF-16 text is recognized but downloaded, since
 the editor works in UTF-8.
+
+### URLs without paths
+
+Folder, editor and preview URLs (`/files/<ref>`, `/edit/<ref>`, `/view/<ref>`)
+never contain a real path or file name, so they do not leak into the browser
+history, proxy or access logs, or screen shares. A ref is the HMAC-SHA256 of
+the path under a random key kept in `nullops.db` (16 base64url characters):
+the same path always gets the same ref, so links can be bookmarked and shared
+between signed-in users, but the path cannot be derived from it. The server
+keeps ref → path in SQLite (refs unused for 180 days are purged) with a memory
+cache in front. Old links with the path in them still open and are replaced
+by the ref.
 
 ### Console log
 

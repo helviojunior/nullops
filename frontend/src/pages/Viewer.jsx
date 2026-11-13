@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
+import { useRoutePath } from "lib/useRoutePath";
 import { ArrowLeft, ChevronLeft, ChevronRight, Download, FileWarning, Loader2, SquarePen } from "lucide-react";
 import { useApi } from "contexts/AuthContext";
 import { useToast } from "contexts/ToastContext";
@@ -15,7 +16,6 @@ import {
   parentPath,
   pathToRoute,
   previewKind,
-  routeToPath,
   saveBlob,
   sortEntries,
 } from "lib/utils";
@@ -26,9 +26,8 @@ import {
  * Content is fetched through the encrypted download and shown from a blob URL.
  */
 export default function Viewer() {
-  const params = useParams();
-  const path = routeToPath(params["*"]);
-  const dir = parentPath(path);
+  const { path, ready } = useRoutePath("/view");
+  const dir = parentPath(path || "");
   const navigate = useNavigate();
   const run = useApi();
   const toast = useToast();
@@ -43,10 +42,11 @@ export default function Viewer() {
 
   // previewable files of the same folder, for previous / next
   useEffect(() => {
+    if (!ready) return;
     run((c) => c.call("list", { path: dir }))
       .then((l) => setSiblings(sortEntries(l.entries, "name", "asc").filter((e) => !e.is_dir && isPreviewable(e.name))))
       .catch(() => setSiblings([]));
-  }, [run, dir]);
+  }, [run, dir, ready]);
 
   useEffect(() => {
     let alive = true;
@@ -55,6 +55,7 @@ export default function Viewer() {
     setError("");
     setUrl(null);
     setText(null);
+    if (!ready) return undefined;
     (async () => {
       try {
         const p = await run((c) => c.call("probe", { path }));
@@ -82,7 +83,7 @@ export default function Viewer() {
       alive = false;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [run, path, lang]);
+  }, [run, path, ready, lang]);
 
   const index = useMemo(() => siblings.findIndex((e) => e.path === path), [siblings, path]);
   const go = useCallback(

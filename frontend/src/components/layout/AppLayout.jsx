@@ -20,6 +20,7 @@ import { useTransfers } from "contexts/TransferContext";
 import { useDialog } from "contexts/DialogContext";
 import FolderTree, { TREE_DEFAULT, TREE_MAX, TREE_MIN } from "components/layout/FolderTree";
 import { parentPath, routeToPath } from "lib/utils";
+import { isRef, pathOf, useRefVersion } from "lib/pathref";
 import { useI18n, LANGUAGE_OPTIONS } from "i18n";
 import { Button } from "components/ui/button";
 
@@ -74,11 +75,14 @@ function loadPanel() {
   }
 }
 
-// Folder being shown: /files/<dir> or the parent of /edit/<file>.
+// Folder being shown: /files/<dir> or the parent of /edit|view/<file>; the
+// URL holds a ref (null while it is not resolved yet).
 function currentFolder(pathname) {
   const m = pathname.match(/^\/(files|edit|view)(?:\/(.*))?$/);
   if (!m) return "";
-  const p = routeToPath(m[2] || "");
+  const splat = m[2] || "";
+  const p = splat === "" ? "" : isRef(splat) ? pathOf(splat) : routeToPath(splat);
+  if (p === undefined) return null;
   return m[1] === "files" ? p : parentPath(p);
 }
 
@@ -86,6 +90,7 @@ export default function AppLayout({ darkMode, setDarkMode }) {
   const { user, status, logout, encrypted } = useAuth();
   const { t, tf } = useI18n();
   const location = useLocation();
+  useRefVersion();
   const [panel, setPanel] = useState(loadPanel);
 
   useEffect(() => {

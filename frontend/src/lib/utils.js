@@ -1,3 +1,4 @@
+import { refOf } from "./pathref";
 import { clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
 
@@ -32,9 +33,13 @@ export function baseName(p) {
   return i < 0 ? p : p.slice(i + 1);
 }
 
-// Route <-> client path (each segment URL-encoded).
+// Client path -> route. The URL carries the path's opaque ref (lib/pathref.js);
+// the path itself (each segment URL-encoded) is only the fallback for a ref
+// not known yet, which the page then swaps for the ref.
 export function pathToRoute(prefix, p) {
   if (!p) return prefix;
+  const ref = refOf(p);
+  if (ref) return `${prefix}/${ref}`;
   return prefix + "/" + p.split("/").map(encodeURIComponent).join("/");
 }
 

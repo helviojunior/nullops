@@ -38,6 +38,8 @@ type Entry struct {
 	MTimeS string `json:"mtime_str"`
 	Mode   uint32 `json:"mode"`
 	Perms  string `json:"perms"`
+	// Ref is the opaque reference used in browser URLs (set by the server).
+	Ref string `json:"ref,omitempty"`
 }
 
 // Listing is the result of List.
@@ -47,6 +49,16 @@ type Listing struct {
 	DirCount  int      `json:"dir_count"`
 	FileCount int      `json:"file_count"`
 	TotalSize int64    `json:"total_size"`
+	// Ref and Crumbs (the folder and its ancestors, with their refs) are set
+	// by the server for the browser URLs.
+	Ref    string  `json:"ref,omitempty"`
+	Crumbs []Crumb `json:"crumbs,omitempty"`
+}
+
+// Crumb is one folder of a breadcrumb.
+type Crumb struct {
+	Path string `json:"path"`
+	Ref  string `json:"ref"`
 }
 
 // New creates an FS rooted at root (resolved to its real path).

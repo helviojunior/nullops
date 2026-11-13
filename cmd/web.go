@@ -20,6 +20,7 @@ import (
 	"github.com/helviojunior/nullops/pkg/fileops"
 	"github.com/helviojunior/nullops/pkg/log"
 	"github.com/helviojunior/nullops/pkg/pads"
+	"github.com/helviojunior/nullops/pkg/pathref"
 	"github.com/helviojunior/nullops/pkg/server"
 	"github.com/helviojunior/nullops/pkg/session"
 	"github.com/helviojunior/nullops/pkg/tlsutil"
@@ -156,6 +157,11 @@ func runWeb(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("upload requests: %w", err)
 	}
 	uploadReqs.Purge(time.Now())
+	pathRefs, err := pathref.Open(db.DB())
+	if err != nil {
+		return fmt.Errorf("path refs: %w", err)
+	}
+	pathRefs.Purge(time.Now().Add(-pathref.Retention))
 
 	addr := net.JoinHostPort(webOpts.Bind, strconv.Itoa(webOpts.Port))
 	srv, err := server.New(server.Config{
@@ -171,6 +177,7 @@ func runWeb(cmd *cobra.Command, args []string) error {
 		MaxUpload:      maxUpload,
 		Pads:           padMgr,
 		UploadReqs:     uploadReqs,
+		PathRefs:       pathRefs,
 		AllowedExt:     webOpts.AllowExt,
 		Users:          store,
 		FS:             fsys,

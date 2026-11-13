@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { useNavigate, useParams, useBlocker } from "react-router-dom";
+import { useNavigate, useBlocker } from "react-router-dom";
+import { useRoutePath } from "lib/useRoutePath";
 import { ArrowLeft, Save, Loader2, Download, Eye } from "lucide-react";
 import { useApi, useAuth } from "contexts/AuthContext";
 import { useDialog } from "contexts/DialogContext";
@@ -9,7 +10,7 @@ import { Button } from "components/ui/button";
 import CodeEditor from "components/files/CodeEditor";
 import { errorText } from "lib/errors";
 import { useDark } from "lib/useDark";
-import { baseName, parentPath, pathToRoute, routeToPath, saveBlob } from "lib/utils";
+import { baseName, parentPath, pathToRoute, saveBlob } from "lib/utils";
 
 const ENC_LABEL = { "utf-8": "UTF-8", "utf-8-bom": "UTF-8 BOM", "utf-16le": "UTF-16 LE", "utf-16be": "UTF-16 BE" };
 
@@ -17,8 +18,7 @@ const ENC_LABEL = { "utf-8": "UTF-8", "utf-8-bom": "UTF-8 BOM", "utf-16le": "UTF
 // Encoding and line endings of the file are preserved on save; saving fails
 // with a conflict when the file changed on disk since it was opened.
 export default function Editor() {
-  const params = useParams();
-  const path = routeToPath(params["*"]);
+  const { path, ready } = useRoutePath("/edit");
   const navigate = useNavigate();
   const run = useApi();
   const { user } = useAuth();
@@ -35,7 +35,7 @@ export default function Editor() {
 
   const dirty = content !== original;
   const readonly = !!user?.readonly;
-  const back = pathToRoute("/files", parentPath(path));
+  const back = pathToRoute("/files", parentPath(path || ""));
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -55,9 +55,9 @@ export default function Editor() {
   }, [run, path, alert, t, lang, navigate, back]);
 
   useEffect(() => {
-    load();
+    if (ready) load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [path]);
+  }, [path, ready]);
 
   const save = useCallback(
     async (force = false) => {

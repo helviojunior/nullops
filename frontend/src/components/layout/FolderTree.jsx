@@ -100,7 +100,7 @@ export default function FolderTree({ current, currentPad, tab, setTab, width, se
   const listRef = useRef(null);
 
   useEffect(() => {
-    if (tab !== "pads") reveal(current);
+    if (tab !== "pads" && current != null) reveal(current);
   }, [current, reveal, tab]);
 
   // keep the active folder in view when the user navigates

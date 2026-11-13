@@ -30,6 +30,7 @@ import (
 	"github.com/helviojunior/nullops/pkg/fileops"
 	"github.com/helviojunior/nullops/pkg/log"
 	"github.com/helviojunior/nullops/pkg/pads"
+	"github.com/helviojunior/nullops/pkg/pathref"
 	"github.com/helviojunior/nullops/pkg/session"
 	"github.com/helviojunior/nullops/pkg/uploadreq"
 )
@@ -62,6 +63,9 @@ type Config struct {
 	Pads *pads.Manager
 	// UploadReqs stores the public upload links (nil = disabled).
 	UploadReqs *uploadreq.Store
+	// PathRefs maps paths to the opaque refs of the browser URLs (nil = the
+	// front-end falls back to paths in the URL).
+	PathRefs *pathref.Store
 }
 
 // Server is the web server.
@@ -300,6 +304,15 @@ func (s *Server) handleAPI(w http.ResponseWriter, r *http.Request) {
 		writeSealed(w, sess, map[string]any{"ok": true, "result": res})
 		return
 	}
+	if strings.HasPrefix(action, "path_") {
+		res, err := s.pathAction(action, plain)
+		if err != nil {
+			writeSealed(w, sess, map[string]any{"ok": false, "error": err.Error()})
+			return
+		}
+		writeSealed(w, sess, map[string]any{"ok": true, "result": res})
+		return
+	}
 	if strings.HasPrefix(action, "pad_") {
 		s.padAction(w, r, sess, user, action, plain)
 		return
@@ -329,6 +342,7 @@ func (s *Server) handleAPI(w http.ResponseWriter, r *http.Request) {
 		writeSealed(w, sess, out)
 		return
 	}
+	s.attachRefs(res)
 	writeSealed(w, sess, map[string]any{"ok": true, "result": res})
 }
 

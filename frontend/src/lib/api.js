@@ -1,4 +1,8 @@
 import { SessionCrypto, b64urlEncode } from "./crypto";
+import { learnFrom } from "./pathref";
+
+// results that carry the URL refs of paths (see lib/pathref.js)
+const REF_ACTIONS = new Set(["list", "search", "stat"]);
 
 export class ApiError extends Error {
   constructor(message, status) {
@@ -67,7 +71,9 @@ export class ApiClient {
       e.code = out.code;
       throw e;
     }
-    return out.result !== undefined ? out.result : out;
+    const res = out.result !== undefined ? out.result : out;
+    if (REF_ACTIONS.has(action)) learnFrom(res);
+    return res;
   }
 
   // Multi-step login: user -> [mfa] -> password. Each returns the raw

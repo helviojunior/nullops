@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { routeFor, useRoutePath } from "lib/useRoutePath";
 import {
   ArrowDown,
   ArrowUp,
@@ -55,7 +56,6 @@ import {
   TYPE_FILTERS,
   parentPath,
   pathToRoute,
-  routeToPath,
 } from "lib/utils";
 
 const validName = (n) => !!n && n !== "." && n !== ".." && !/[\\/\0]/.test(n);
@@ -113,8 +113,7 @@ function Breadcrumb({ path }) {
 }
 
 export default function Browser() {
-  const params = useParams();
-  const path = routeToPath(params["*"]);
+  const { path, ready } = useRoutePath("/files");
   const navigate = useNavigate();
   const run = useApi();
   const { user } = useAuth();
@@ -179,6 +178,7 @@ export default function Browser() {
     const mine = ++loadSeq.current;
     setLoading(true);
     setError("");
+    if (!ready) return; // the URL's ref is being resolved
     try {
       const res = await run((c) => c.call("list", { path }));
       if (mine !== loadSeq.current) return;
@@ -192,7 +192,7 @@ export default function Browser() {
       if (mine === loadSeq.current) setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [run, path, err]);
+  }, [run, path, ready, err]);
 
   // Opening a folder: clear the previous folder's items right away, show the
   // loading state, then fill the list when the server answers.
@@ -302,7 +302,7 @@ export default function Browser() {
       if (v === null) return;
       toast.success(tf("toast.created", { name: v.trim() }));
       // a new file is empty, i.e. text: open it in the editor
-      navigate(pathToRoute("/edit", joinPath(path, v.trim())));
+      routeFor(run, "/edit", joinPath(path, v.trim())).then((to) => navigate(to));
     });
 
   const rename = (entry) =>
