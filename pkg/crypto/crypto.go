@@ -44,7 +44,11 @@ type Envelope struct {
 // Cipher holds a derived session key.
 type Cipher struct {
 	aead cipher.AEAD
+	key  []byte
 }
+
+// Key returns a copy of the raw AES key (used to persist the session wrapped).
+func (c *Cipher) Key() []byte { return append([]byte(nil), c.key...) }
 
 // Handshake runs the server side of the ECDH exchange. It returns the derived
 // cipher and the server public key (raw uncompressed point).
@@ -83,7 +87,7 @@ func NewCipher(key []byte) (*Cipher, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Cipher{aead: aead}, nil
+	return &Cipher{aead: aead, key: append([]byte(nil), key...)}, nil
 }
 
 // Seal encrypts plaintext into an envelope.

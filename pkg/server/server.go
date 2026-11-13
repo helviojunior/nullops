@@ -48,6 +48,7 @@ type Config struct {
 	ReadOnly   bool
 	Title      string
 	SessionTTL time.Duration
+	Sessions   session.Store // persistent session store (nil = memory only)
 	AllowedExt []string
 	Users      *auth.Store
 	FS         *fileops.FS
@@ -69,7 +70,7 @@ func New(cfg Config) (*Server, error) {
 	}
 	s := &Server{
 		cfg:      cfg,
-		sessions: session.NewManager(cfg.SessionTTL, 0),
+		sessions: session.NewManager(cfg.SessionTTL, cfg.Sessions, cfg.Plaintext),
 		api: &api.API{FS: cfg.FS, Opt: api.Options{
 			Title: cfg.Title, ReadOnly: cfg.ReadOnly, Auth: !cfg.NoAuth,
 		}},
@@ -229,6 +230,19 @@ func (s *Server) handleAPI(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusUnauthorized, "Not authenticated")
 		return
 	}
+	if !s.cfg.NoAuth {
+		// A persisted session outlives restarts: re-check the account.
+		u, ok := s.cfg.Users.Get(user)
+		if !ok {
+			s.sessions.Destroy(sess.ID)
+			writeErr(w, http.StatusUnauthorized, "Not authenticated")
+			return
+		}
+		if u.ReadOnly != ro && !s.cfg.ReadOnly {
+			ro = u.ReadOnly
+			sess.SetReadOnly(ro)
+		}
+	}
 	plain, err := s.open(sess, body)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, "Decryption failed")
@@ -356,9 +370,12 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request, sess *session.Ses
 	}
 	s.limiter.reset(ip)
 	ro := u.ReadOnly || s.cfg.ReadOnly
-	sess.SetAuth(u.Username, ro)
+	if err := s.sessions.Authenticate(sess, u.Username, ro, ip, ua); err != nil {
+		log.Error("cannot persist session", "err", err)
+	}
 	log.Info("login", "user", u.Username, "ip", ip, "ua", ua, "readonly", ro)
-	writeSealed(w, sess, map[string]any{"ok": true, "username": u.Username, "readonly": ro})
+	writeSealed(w, sess, map[string]any{"ok": true, "username": u.Username, "readonly": ro,
+		"expires_at": sess.Expires().Unix()})
 }
 
 func (s *Server) download(w http.ResponseWriter, r *http.Request, sess *session.Session, plain []byte, c api.Caller) {

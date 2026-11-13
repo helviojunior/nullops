@@ -1,10 +1,12 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { ApiClient, ApiError, isSessionError } from "lib/api";
 import { InsecureContextError } from "lib/crypto";
+import { clearSession, loadSession, saveSession } from "lib/sessionStore";
 
 /**
- * Owns the encrypted channel. The session key lives only in this JS context:
- * a page reload starts a new handshake (and requires signing in again).
+ * Owns the encrypted channel. After login the session (id + non-extractable
+ * AES key) is kept in IndexedDB, so reloads and new tabs reuse it until it
+ * expires (12h by default) or the user signs out.
  */
 const AuthContext = createContext(null);
 
@@ -23,6 +25,24 @@ export function AuthProvider({ children }) {
     if (info.title) document.title = info.title;
     return info;
   }, []);
+
+  // Tries to resume a persisted session; false when there is none / it expired.
+  const resume = useCallback(async () => {
+    const rec = await loadSession();
+    if (!rec) return false;
+    const client = new ApiClient();
+    client.restore(rec);
+    try {
+      await loadInfo(client);
+    } catch (err) {
+      if (isSessionError(err)) await clearSession();
+      return false;
+    }
+    clientRef.current = client;
+    setEncrypted(client.encrypted);
+    setStatus("ready");
+    return true;
+  }, [loadInfo]);
 
   // Handshake with retries (absorbs a server that is still starting).
   const connect = useCallback(async () => {
@@ -49,8 +69,10 @@ export function AuthProvider({ children }) {
   }, [loadInfo]);
 
   useEffect(() => {
-    connect();
-  }, [connect]);
+    (async () => {
+      if (!(await resume())) await connect();
+    })();
+  }, [connect, resume]);
 
   const login = useCallback(
     async (username, password) => {
@@ -76,6 +98,7 @@ export function AuthProvider({ children }) {
         throw e;
       }
       setExpired(false);
+      await saveSession({ ...client.crypto.snapshot(), expiresAt: out.expires_at || 0 });
       return loadInfo(client);
     },
     [connect, loadInfo]
@@ -85,12 +108,14 @@ export function AuthProvider({ children }) {
     const client = clientRef.current;
     clientRef.current = null;
     setUser(null);
+    await clearSession();
     if (client) await client.logout();
     connect();
   }, [connect]);
 
   // Called when any request reports a lost session.
   const sessionLost = useCallback(() => {
+    clearSession();
     clientRef.current = null;
     setUser(null);
     setExpired(true);

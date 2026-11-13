@@ -20,6 +20,7 @@ import (
 	"github.com/helviojunior/fmweb/pkg/fileops"
 	"github.com/helviojunior/fmweb/pkg/log"
 	"github.com/helviojunior/fmweb/pkg/server"
+	"github.com/helviojunior/fmweb/pkg/session"
 	"github.com/helviojunior/fmweb/pkg/tlsutil"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
@@ -45,7 +46,7 @@ var webCmd = &cobra.Command{
 	Short: "Start the web file manager",
 	Long: ascii.LogoHelp(`Start the HTTPS web server. The UI is embedded in the binary and served
 from memory. Every /api payload is encrypted end-to-end (ECDH P-256 +
-AES-256-GCM, per-session keys kept only in RAM).
+AES-256-GCM, one key per session).
 
 On first run, if <data-dir> has no certificate one is generated, and if it has
 no user an "admin" account with a random password is created and printed once.`),
@@ -114,6 +115,17 @@ func runWeb(cmd *cobra.Command, args []string) error {
 		cert = &c
 	}
 
+	// authenticated sessions survive restarts (12h by default)
+	var sessStore session.Store
+	if !webOpts.NoAuth {
+		st, err := session.OpenSQLite(d.SessionsFile())
+		if err != nil {
+			return fmt.Errorf("session database %s: %w", d.SessionsFile(), err)
+		}
+		defer st.Close()
+		sessStore = st
+	}
+
 	addr := net.JoinHostPort(webOpts.Bind, strconv.Itoa(webOpts.Port))
 	srv, err := server.New(server.Config{
 		Addr:       addr,
@@ -123,6 +135,7 @@ func runWeb(cmd *cobra.Command, args []string) error {
 		ReadOnly:   webOpts.ReadOnly,
 		Title:      webOpts.Title,
 		SessionTTL: time.Duration(webOpts.SessionTTL) * time.Second,
+		Sessions:   sessStore,
 		AllowedExt: webOpts.AllowExt,
 		Users:      store,
 		FS:         fsys,
@@ -213,9 +226,13 @@ func printBanner(root string, https bool, genUser, genPass string, users []strin
 	}
 	fmt.Println()
 	if https {
-		fmt.Printf("  \033[90mtransport: ECDH P-256 + AES-256-GCM per session (keys in memory only)\033[0m\n")
+		fmt.Printf("  \033[90mtransport: ECDH P-256 + AES-256-GCM, one key per session\033[0m\n")
 	}
 	fmt.Printf("  \033[90mfront-end: %d embedded files served from memory\033[0m\n", assets.Count())
+	if !webOpts.NoAuth {
+		fmt.Printf("  \033[90msessions: valid for %s after login, kept across restarts\033[0m\n",
+			(time.Duration(webOpts.SessionTTL) * time.Second).String())
+	}
 	if https {
 		fmt.Printf("  \033[90mhttps: a self-signed certificate triggers a one-time browser warning\033[0m\n")
 	} else {
@@ -239,5 +256,5 @@ func init() {
 	f.StringArrayVar(&webOpts.Exclude, "exclude", nil, "Hide entries matching this glob (repeatable)")
 	f.StringSliceVar(&webOpts.AllowExt, "allow-ext", nil, "Only allow uploads with these extensions (e.g. pdf,txt)")
 	f.StringVar(&webOpts.Title, "title", "Web File Manager", "Title shown in the UI")
-	f.IntVar(&webOpts.SessionTTL, "session-ttl", 3600, "Idle session lifetime in seconds")
+	f.IntVar(&webOpts.SessionTTL, "session-ttl", 12*3600, "Session lifetime in seconds after login (default 12h); sessions are kept in <data-dir>/sessions.db")
 }

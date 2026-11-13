@@ -9,7 +9,8 @@ fmweb web -r /data -b 0.0.0.0 -p 8443
 ```
 
 - **Single binary**: front-end embedded (zip + AES-256-GCM), never extracted to disk.
-- **Encrypted `/api` channel**: ECDH P-256 → HKDF-SHA256 → AES-256-GCM, per-session keys kept only in memory.
+- **Encrypted `/api` channel**: ECDH P-256 → HKDF-SHA256 → AES-256-GCM, one key per session.
+- **Persistent sessions**: valid for 12 hours after login, surviving page reloads and server restarts.
 - **HTTPS by default**, with a self-signed certificate generated on the first run.
 - **Pure Go server** (`net/http`).
 
@@ -56,13 +57,33 @@ cannot downgrade the session to clear text.
 
 Failures are logged as `WARN … failed` with `err`. Listing and search only show up with `-v`.
 
+### Sessions
+
+After login the session is valid for **12 hours** (`--session-ttl`, in
+seconds), across page reloads, new tabs and server restarts. Signing out ends
+it immediately.
+
+- **Server**: `fmweb/sessions.db` (SQLite, 0600). The session id is never
+  stored; rows are keyed by SHA-256(id), and the AES key is wrapped with
+  AES-256-GCM under a key derived from the id. A copy of the database alone
+  does not reveal session keys or allow reusing a session.
+- **Browser**: the id and the AES key, stored as a **non-extractable**
+  `CryptoKey` in IndexedDB, so scripts cannot read the key bytes.
+- Handshakes not followed by a login stay in memory only and expire after
+  10 minutes. Expired rows are purged automatically.
+- On every request the account is re-checked: a removed user loses the
+  session, and changing the read-only flag takes effect.
+- A session created with TLS is not accepted by a `--no-tls` server, and the
+  other way around.
+
 ### User data (`./fmweb`)
 
 ```
 fmweb/
 ├── tls/cert.pem    # certificate
 ├── tls/key.pem     # private key (0600)
-└── users.json      # users (scrypt hashes, 0600)
+├── users.json      # users (scrypt hashes, 0600)
+└── sessions.db     # active sessions (SQLite, 0600)
 ```
 
 On first run with no users, `web` creates `admin` with a random password and
@@ -114,7 +135,7 @@ pkg/
   datadir/           # ./fmweb
   fileops/           # root-confined filesystem operations
   server/            # net/http, /api routes, login rate limit
-  session/           # in-memory sessions
+  session/           # sessions: memory + SQLite (wrapped keys)
   tlsutil/           # certificate generation and import
 tools/assetpack/     # build step: dist/ → bundle.bin
 frontend/            # React 19 + Tailwind (pure JS), Vite, Dockerfile

@@ -26,6 +26,12 @@ export class ApiClient {
     return { "Content-Type": "application/json", "X-Session-Id": this.crypto.sessionId };
   }
 
+  restore(rec) {
+    this.crypto.restore(rec);
+    this.encrypted = !rec.plain;
+    this.authRequired = true;
+  }
+
   async connect() {
     const info = await this.crypto.handshake();
     this.authRequired = info.authRequired;

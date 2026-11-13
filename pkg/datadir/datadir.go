@@ -57,3 +57,6 @@ func (d *Dir) KeyFile() string { return filepath.Join(d.TLSDir(), "key.pem") }
 
 // UsersFile is the JSON user database path.
 func (d *Dir) UsersFile() string { return filepath.Join(d.Root, "users.json") }
+
+// SessionsFile is the SQLite database of authenticated sessions.
+func (d *Dir) SessionsFile() string { return filepath.Join(d.Root, "sessions.db") }

@@ -2,7 +2,7 @@
 export const LOCALES = {
   en: {
     "app.name": "Web File Manager",
-    "app.secure": "ECDH P-256 + AES-256-GCM · keys in memory only",
+    "app.secure": "ECDH P-256 + AES-256-GCM · one key per session",
     "app.plain": "Payload encryption DISABLED (--no-tls) · traffic in clear text",
 
     "common.cancel": "Cancel",
@@ -19,7 +19,7 @@ export const LOCALES = {
     "common.error": "Error",
 
     "login.title": "Sign in",
-    "login.subtitle": "Encrypted session · keys kept in memory only",
+    "login.subtitle": "Encrypted session · payload encrypted end to end",
     "login.username": "Username",
     "login.password": "Password",
     "login.submit": "Sign in",
@@ -121,7 +121,7 @@ export const LOCALES = {
 
   "pt-br": {
     "app.name": "Web File Manager",
-    "app.secure": "ECDH P-256 + AES-256-GCM · chaves apenas em memória",
+    "app.secure": "ECDH P-256 + AES-256-GCM · uma chave por sessão",
     "app.plain": "Criptografia de payload DESATIVADA (--no-tls) · tráfego em texto claro",
 
     "common.cancel": "Cancelar",
@@ -138,7 +138,7 @@ export const LOCALES = {
     "common.error": "Erro",
 
     "login.title": "Entrar",
-    "login.subtitle": "Sessão criptografada · chaves mantidas apenas em memória",
+    "login.subtitle": "Sessão criptografada · payload cifrado de ponta a ponta",
     "login.username": "Usuário",
     "login.password": "Senha",
     "login.submit": "Entrar",

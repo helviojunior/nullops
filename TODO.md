@@ -27,7 +27,11 @@ Legend: `[x]` done · `[ ]` pending · `[~]` partial
 ## 2. Implemented
 
 ### Backend / security
-- [x] Encrypted `/api` channel: ECDH P-256 handshake → HKDF-SHA256 → AES-256-GCM, per-session keys kept only in memory
+- [x] Encrypted `/api` channel: ECDH P-256 handshake → HKDF-SHA256 → AES-256-GCM, one key per session
+- [x] Sessions persisted in `./fmweb/sessions.db` (pure-Go SQLite), valid for 12h (`--session-ttl`), surviving
+      page reloads and server restarts: id stored only as SHA-256, AES key wrapped with a key derived from the id;
+      browser keeps a non-extractable `CryptoKey` in IndexedDB; logout deletes the session
+- [x] Account re-checked on every request (removed user loses the session; read-only flag changes apply)
 - [x] Wire protocol compatible with the Python version (validated with its integration client)
 - [x] HTTPS by default; self-signed ECDSA certificate generated on first run when missing
 - [x] `create-tls`: generate (`--host`, `--days`, `--force`) or import (`--cert/--key`) a certificate
@@ -91,6 +95,8 @@ Legend: `[x]` done · `[ ]` pending · `[~]` partial
 ### Users and security
 - [ ] Per-user home directory (restrict each user to a subfolder)
 - [ ] `del-user` / `list-users` subcommands
+- [ ] `sessions` subcommand: list and revoke active sessions (user, IP, user-agent, expiry)
+- [ ] Reload `users.json` without restarting the server (today `add-user` changes apply on the next start)
 - [ ] MFA (TOTP) at login
 - [ ] Audit log also in a file / JSON format, with timestamps (today: console only)
 - [ ] Real client IP behind a reverse proxy (`X-Forwarded-For` from trusted proxies)

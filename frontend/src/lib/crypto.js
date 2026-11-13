@@ -99,6 +99,17 @@ export class SessionCrypto {
     return { authRequired: !!data.auth_required, encrypted: true };
   }
 
+  // Restores a persisted session (see lib/sessionStore.js).
+  restore(rec) {
+    this.sessionId = rec.sessionId;
+    this.plain = !!rec.plain;
+    this.aesKey = rec.plain ? null : rec.aesKey;
+  }
+
+  snapshot() {
+    return { sessionId: this.sessionId, plain: this.plain, aesKey: this.aesKey };
+  }
+
   async encryptJson(obj) {
     if (this.plain) return obj;
     const iv = window.crypto.getRandomValues(new Uint8Array(12));
