@@ -47,6 +47,22 @@ The console shows this warning and asks `Do you want to continue? [y/N]`
 footer. A server running with TLS refuses unencrypted clients, so a client
 cannot downgrade the session to clear text.
 
+### Folder panel
+
+A side panel on the left shows the folder hierarchy and expands itself to the
+folder being browsed. Drag its right edge to resize it (double-click resets the
+width). Hide or show it with the button at the top left of the header. The
+width and open/closed state are remembered per browser.
+
+### Opening a file
+
+Clicking a file asks the server to sniff the **MIME type of its first 4096
+bytes** (WHATWG sniffing from `net/http`, then a UTF-8 / binary-byte check over
+the whole buffer). `text/*` opens in the viewer/editor (read-only accounts get
+the viewer); anything else is downloaded. The extension list is only used as a
+fallback if the probe fails. UTF-16 text is recognized but downloaded, since
+the editor works in UTF-8.
+
 ### Console log
 
 | Event | Fields |

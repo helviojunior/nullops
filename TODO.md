@@ -61,6 +61,14 @@ Legend: `[x]` done · `[ ]` pending · `[~]` partial
 ### Web interface
 - [x] **Edit text files directly in the web UI**: txt, md, log, json, yaml, xml, html, css, js, go, py, sh,
       **ps1 / psm1 / psd1, vbs, cmd, bat, reg**, sql, ini, conf and others (5 MiB limit, Ctrl+S to save, line numbers)
+- [x] Clicking a file sniffs the MIME type of its first 4096 bytes (`probe` action): `text/*` that is valid
+      UTF-8 opens in the viewer/editor, anything else is downloaded; the extension list is only the fallback
+      (a text file with an unknown extension is editable, a binary named `.txt` is downloaded)
+- [x] Left side panel with the folder hierarchy: loaded on demand, auto-expands to the folder being browsed,
+      updated by every listing (new/renamed/moved folders show up without reload); **resizable** by dragging its
+      edge (180–600 px, double-click resets, arrow keys when focused) and **collapsible** (header button or panel
+      button); width and open/closed state remembered per browser
+- [x] File table columns adapt to the space left by the panel
 - [x] Editor on its own route (`/edit/<path>`), with a "discard changes?" confirmation when leaving
 - [x] EN / PT-BR (EN is the default and the fallback), language remembered per browser
 - [x] Light / dark theme
@@ -83,13 +91,15 @@ Legend: `[x]` done · `[ ]` pending · `[~]` partial
 
 ### Editor
 - [ ] Syntax highlighting (e.g. CodeMirror 6) keeping the CSP without `unsafe-eval`
-- [ ] Preserve the original line endings (CRLF for `.bat` / `.cmd` / `.ps1`) and encoding (UTF-16 / BOM in Windows scripts)
+- [ ] Preserve the original line endings (CRLF for `.bat` / `.cmd` / `.ps1`) and encoding (UTF-16 / BOM in Windows scripts);
+      today UTF-16 files are detected as `text/plain; charset=utf-16` but downloaded instead of edited
 - [ ] Detect when the file changed on disk since it was opened (conflict on save)
 
 ### Operations
 - [ ] Download a folder / multiple selection as zip (streamed, without a temporary file)
 - [ ] Resumable upload (resume after a dropped connection) and a per-file size limit
-- [ ] Copy / move with a folder picker (instead of typing the path)
+- [ ] Copy / move with a folder picker (instead of typing the path), reusing the folder tree
+- [ ] Drag and drop of files onto folders in the side panel (move)
 - [ ] Sort by column and filter by type
 
 ### Users and security

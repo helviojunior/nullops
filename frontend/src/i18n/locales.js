@@ -39,6 +39,10 @@ export const LOCALES = {
     "nav.readonly": "read-only",
 
     "browser.root": "Root",
+    "tree.title": "Folders",
+    "tree.show": "Show folders panel",
+    "tree.hide": "Hide folders panel",
+    "tree.resize": "Drag to resize (double-click resets)",
     "browser.search": "Search in this folder…",
     "browser.newFolder": "Folder",
     "browser.newFile": "File",
@@ -158,6 +162,10 @@ export const LOCALES = {
     "nav.readonly": "somente leitura",
 
     "browser.root": "Raiz",
+    "tree.title": "Pastas",
+    "tree.show": "Mostrar painel de pastas",
+    "tree.hide": "Ocultar painel de pastas",
+    "tree.resize": "Arraste para redimensionar (duplo clique restaura)",
     "browser.search": "Buscar nesta pasta…",
     "browser.newFolder": "Pasta",
     "browser.newFile": "Arquivo",

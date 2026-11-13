@@ -22,6 +22,7 @@ import {
   X,
 } from "lucide-react";
 import { useApi, useAuth } from "contexts/AuthContext";
+import { useTree } from "contexts/TreeContext";
 import { useDialog } from "contexts/DialogContext";
 import { useToast } from "contexts/ToastContext";
 import { useI18n } from "i18n";
@@ -70,7 +71,7 @@ function Breadcrumb({ path }) {
   const { t } = useI18n();
   const parts = path ? path.split("/") : [];
   return (
-    <nav className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto text-sm scrollbar-thin">
+    <nav className="flex w-full min-w-0 items-center gap-1 overflow-x-auto text-sm scrollbar-thin xl:w-auto xl:flex-1">
       <Link to="/files" className="flex items-center gap-1 rounded px-1.5 py-1 text-muted-foreground hover:bg-muted hover:text-foreground">
         <Home className="h-4 w-4" />
         <span className="hidden sm:inline">{t("browser.root")}</span>
@@ -107,6 +108,7 @@ export default function Browser() {
   const dialog = useDialog();
   const toast = useToast();
   const { t, tf, lang } = useI18n();
+  const tree = useTree();
 
   const [listing, setListing] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -118,6 +120,20 @@ export default function Browser() {
   const [dragging, setDragging] = useState(false);
   const [transfers, setTransfers] = useState([]);
   const fileInput = useRef(null);
+  // Columns follow the space actually available (the folder panel takes part
+  // of the window), not the viewport width.
+  const listRef = useRef(null);
+  const [listWidth, setListWidth] = useState(1200);
+  useEffect(() => {
+    const el = listRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return undefined;
+    const ro = new ResizeObserver(([e]) => setListWidth(e.contentRect.width));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const showSize = listWidth >= 520;
+  const showDate = listWidth >= 700;
+  const showPerms = listWidth >= 860;
   const dragDepth = useRef(0);
   const seq = useRef(0);
 
@@ -130,12 +146,14 @@ export default function Browser() {
     try {
       const res = await run((c) => c.call("list", { path }));
       setListing(res);
+      tree.update(path, res.entries);
     } catch (e) {
       if (e.status !== 401) setError(err(e));
       setListing(null);
     } finally {
       setLoading(false);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [run, path, err]);
 
   useEffect(() => {
@@ -169,9 +187,28 @@ export default function Browser() {
     });
   };
 
-  const open = (entry) => {
-    if (entry.is_dir) navigate(pathToRoute("/files", entry.path));
-    else if (isEditable(entry.name)) navigate(pathToRoute("/edit", entry.path));
+  // Folders open; files are sniffed by the server (MIME of the first 4096
+  // bytes): text/* goes to the viewer/editor, anything else is downloaded.
+  // The extension list is only the fallback when the probe fails.
+  const [probing, setProbing] = useState(null);
+  const open = async (entry) => {
+    if (entry.is_dir) {
+      navigate(pathToRoute("/files", entry.path));
+      return;
+    }
+    if (probing) return;
+    setProbing(entry.path);
+    let isText;
+    try {
+      const p = await run((c) => c.call("probe", { path: entry.path }));
+      isText = !!p.is_text;
+    } catch (e) {
+      if (e.status === 401) return;
+      isText = isEditable(entry.name);
+    } finally {
+      setProbing(null);
+    }
+    if (isText) navigate(pathToRoute("/edit", entry.path));
     else download(entry);
   };
 
@@ -231,8 +268,8 @@ export default function Browser() {
     }).then((v) => {
       if (v === null) return;
       toast.success(tf("toast.created", { name: v.trim() }));
-      if (isEditable(v.trim())) navigate(pathToRoute("/edit", joinPath(path, v.trim())));
-      else load();
+      // a new file is empty, i.e. text: open it in the editor
+      navigate(pathToRoute("/edit", joinPath(path, v.trim())));
     });
 
   const rename = (entry) =>
@@ -254,6 +291,8 @@ export default function Browser() {
       onSubmit: submit((c, v) => c.call(action, { paths, dest: v.trim().replace(/^\/+|\/+$/g, "") })),
     }).then((v) => {
       if (v === null) return;
+      tree.invalidate(v.trim().replace(/^\/+|\/+$/g, ""));
+      paths.forEach((p) => tree.invalidate(parentPath(p)));
       toast.success(tf(action === "copy" ? "toast.copied" : "toast.moved", { n: paths.length }));
       setSelected({});
       load();
@@ -278,7 +317,11 @@ export default function Browser() {
       toggleDefault: true,
       confirmLabel: t("action.extract"),
       onSubmit: submit((c, v) => c.call("extract", { path: entry.path, to_subfolder: v.toggle })),
-    }).then((v) => v !== null && (toast.success(t("toast.extracted")), load()));
+    }).then((v) => {
+      if (v === null) return;
+      toast.success(t("toast.extracted"));
+      load();
+    });
 
   const archive = (paths, kind) => {
     const stamp = new Date().toISOString().slice(0, 19).replace(/\D/g, "").replace(/^(\d{8})/, "$1_");
@@ -458,7 +501,7 @@ export default function Browser() {
       )}
 
       {/* listing */}
-      <div className="min-h-0 flex-1 overflow-auto scrollbar-thin">
+      <div ref={listRef} className="min-h-0 flex-1 overflow-auto scrollbar-thin">
         {error ? (
           <div className="p-8 text-center text-sm text-red-500">{error}</div>
         ) : loading && !listing ? (
@@ -478,10 +521,10 @@ export default function Browser() {
                   />
                 </th>
                 <th className="px-2 py-2 font-medium">{t("browser.name")}</th>
-                <th className="hidden w-28 px-2 py-2 text-right font-medium sm:table-cell">{t("browser.size")}</th>
-                <th className="hidden w-40 px-2 py-2 font-medium md:table-cell">{t("browser.modified")}</th>
-                <th className="hidden w-32 px-2 py-2 font-medium lg:table-cell">{t("browser.perms")}</th>
-                <th className="w-48 px-4 py-2 text-right font-medium">{t("browser.actions")}</th>
+                {showSize && <th className="w-28 px-2 py-2 text-right font-medium">{t("browser.size")}</th>}
+                {showDate && <th className="w-40 px-2 py-2 font-medium">{t("browser.modified")}</th>}
+                {showPerms && <th className="w-32 px-2 py-2 font-medium">{t("browser.perms")}</th>}
+                <th className="w-px whitespace-nowrap px-4 py-2 text-right font-medium">{t("browser.actions")}</th>
               </tr>
             </thead>
             <tbody>
@@ -491,7 +534,7 @@ export default function Browser() {
                   onClick={() => navigate(pathToRoute("/files", parentPath(path)))}
                 >
                   <td className="px-4 py-2" />
-                  <td className="px-2 py-2 text-muted-foreground" colSpan={5}>
+                  <td className="px-2 py-2 text-muted-foreground" colSpan={2 + showSize + showDate + showPerms}>
                     <span className="inline-flex items-center gap-2">
                       <ArrowUp className="h-4 w-4" /> ..
                     </span>
@@ -516,18 +559,28 @@ export default function Browser() {
                   </td>
                   <td className="max-w-0 px-2 py-2">
                     <div className="flex items-center gap-2">
-                      <FileIcon entry={e} />
+                      {probing === e.path ? (
+                        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                      ) : (
+                        <FileIcon entry={e} />
+                      )}
                       <span className="truncate" title={e.path}>
                         {results ? e.path : e.name}
                       </span>
                       {e.is_link && <span className="text-xs text-muted-foreground">↪</span>}
                     </div>
                   </td>
-                  <td className="hidden px-2 py-2 text-right tabular-nums text-muted-foreground sm:table-cell">
-                    {e.is_dir ? "—" : humanSize(e.size)}
-                  </td>
-                  <td className="hidden px-2 py-2 tabular-nums text-muted-foreground md:table-cell">{e.mtime_str}</td>
-                  <td className="hidden px-2 py-2 font-mono text-xs text-muted-foreground lg:table-cell">{e.perms}</td>
+                  {showSize && (
+                    <td className="whitespace-nowrap px-2 py-2 text-right tabular-nums text-muted-foreground">
+                      {e.is_dir ? "—" : humanSize(e.size)}
+                    </td>
+                  )}
+                  {showDate && (
+                    <td className="whitespace-nowrap px-2 py-2 tabular-nums text-muted-foreground">{e.mtime_str}</td>
+                  )}
+                  {showPerms && (
+                    <td className="whitespace-nowrap px-2 py-2 font-mono text-xs text-muted-foreground">{e.perms}</td>
+                  )}
                   <td className="px-4 py-1.5">
                     <div className="flex justify-end gap-0.5 opacity-70 group-hover:opacity-100">
                       {!e.is_dir && (
@@ -564,7 +617,7 @@ export default function Browser() {
               ))}
               {!entries.length && !loading && (
                 <tr>
-                  <td colSpan={6} className="p-12 text-center text-muted-foreground">
+                  <td colSpan={3 + showSize + showDate + showPerms} className="p-12 text-center text-muted-foreground">
                     {results ? tf("browser.noResults", { q: query.trim() }) : t("browser.empty")}
                   </td>
                 </tr>

@@ -1,6 +1,21 @@
-import { Navigate, Outlet } from "react-router-dom";
-import { FolderLock, LogOut, Moon, Sun, Languages, ShieldCheck, ShieldOff, Loader2 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Navigate, Outlet, useLocation } from "react-router-dom";
+import {
+  FolderLock,
+  LogOut,
+  Moon,
+  Sun,
+  Languages,
+  ShieldCheck,
+  ShieldOff,
+  Loader2,
+  PanelLeftOpen,
+  PanelLeftClose,
+} from "lucide-react";
 import { useAuth } from "contexts/AuthContext";
+import { TreeProvider } from "contexts/TreeContext";
+import FolderTree, { TREE_DEFAULT, TREE_MAX, TREE_MIN } from "components/layout/FolderTree";
+import { parentPath, routeToPath } from "lib/utils";
 import { useI18n, LANGUAGE_OPTIONS } from "i18n";
 import { Button } from "components/ui/button";
 
@@ -40,9 +55,44 @@ export function ThemeToggle({ darkMode, setDarkMode }) {
   );
 }
 
+const PANEL_KEY = "fmweb.tree";
+
+function loadPanel() {
+  try {
+    const v = JSON.parse(localStorage.getItem(PANEL_KEY) || "{}");
+    return {
+      open: typeof v.open === "boolean" ? v.open : window.innerWidth >= 768,
+      width: Math.min(TREE_MAX, Math.max(TREE_MIN, Number(v.width) || TREE_DEFAULT)),
+    };
+  } catch {
+    return { open: window.innerWidth >= 768, width: TREE_DEFAULT };
+  }
+}
+
+// Folder being shown: /files/<dir> or the parent of /edit/<file>.
+function currentFolder(pathname) {
+  const m = pathname.match(/^\/(files|edit)(?:\/(.*))?$/);
+  if (!m) return "";
+  const p = routeToPath(m[2] || "");
+  return m[1] === "edit" ? parentPath(p) : p;
+}
+
 export default function AppLayout({ darkMode, setDarkMode }) {
   const { user, status, logout, encrypted } = useAuth();
   const { t, tf } = useI18n();
+  const location = useLocation();
+  const [panel, setPanel] = useState(loadPanel);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(PANEL_KEY, JSON.stringify(panel));
+    } catch {
+      /* ignore */
+    }
+  }, [panel]);
+
+  const setWidth = (width) => setPanel((p) => ({ ...p, width }));
+  const togglePanel = () => setPanel((p) => ({ ...p, open: !p.open }));
 
   if (!user) {
     if (status === "connecting") {
@@ -58,6 +108,16 @@ export default function AppLayout({ darkMode, setDarkMode }) {
   return (
     <div className="flex h-screen flex-col">
       <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border bg-card px-4">
+        <button
+          type="button"
+          onClick={togglePanel}
+          className="-ml-1 rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+          title={panel.open ? t("tree.hide") : t("tree.show")}
+          aria-label={panel.open ? t("tree.hide") : t("tree.show")}
+          aria-pressed={panel.open}
+        >
+          {panel.open ? <PanelLeftClose className="h-5 w-5" /> : <PanelLeftOpen className="h-5 w-5" />}
+        </button>
         <FolderLock className="h-5 w-5 text-primary" />
         <span className="font-semibold truncate">{user.title || t("app.name")}</span>
         {user.readonly && (
@@ -80,9 +140,21 @@ export default function AppLayout({ darkMode, setDarkMode }) {
         </div>
       </header>
 
-      <main className="flex min-h-0 flex-1 flex-col">
-        <Outlet />
-      </main>
+      <TreeProvider>
+        <div className="flex min-h-0 flex-1">
+          {panel.open && (
+            <FolderTree
+              current={currentFolder(location.pathname)}
+              width={panel.width}
+              setWidth={setWidth}
+              onCollapse={togglePanel}
+            />
+          )}
+          <main className="flex min-h-0 min-w-0 flex-1 flex-col">
+            <Outlet />
+          </main>
+        </div>
+      </TreeProvider>
 
       <footer className="flex h-8 shrink-0 items-center gap-3 border-t border-border bg-card px-4 text-xs text-muted-foreground">
         {encrypted ? (
