@@ -114,27 +114,43 @@ get-version:
 
 prepare: assets get-version
 
-windows: prepare	## Make Windows x86 and x64 Binaries
-	@for ARCH in ${ARCHS}; do \
+windows: prepare	## Make Windows x64/arm64 release archives (nullops-v<ver>-windows-<arch>.zip)
+	@VERSTR=$$(cat ${TARGET}/.verstr) ; \
+	OUT=$$(cd ${TARGET} && pwd) ; \
+	for ARCH in ${ARCHS}; do \
 	    if [ "$${ARCH}" != "386" ]; then \
 			echo "Building for windows $${ARCH}.." ;\
-			CGO_ENABLED=0 GOOS=windows GOARCH=$${ARCH} go build -trimpath -a -ldflags "$$(cat ${TARGET}/.ldflags)" -o ${TARGET}/${BINNAME}_windows_$${ARCH}.exe || exit 1 ;\
+			STAGE=$$(mktemp -d) ; \
+			CGO_ENABLED=0 GOOS=windows GOARCH=$${ARCH} go build -trimpath -a -ldflags "$$(cat ${TARGET}/.ldflags)" -o $$STAGE/${BINNAME}.exe || exit 1 ;\
+			rm -f $$OUT/${BINNAME}-v$${VERSTR}-windows-$${ARCH}.zip ; \
+			( cd $$STAGE && zip -q -X $$OUT/${BINNAME}-v$${VERSTR}-windows-$${ARCH}.zip ${BINNAME}.exe ) || exit 1 ;\
+			rm -rf $$STAGE ;\
 		fi; \
 	done; \
 	echo "Done."
 
-linux: prepare	## Make Linux x86 and x64 Binaries
-	@for ARCH in ${ARCHS}; do \
+linux: prepare	## Make Linux x86/x64/arm64 release archives (nullops-v<ver>-linux-<arch>.tar.gz)
+	@VERSTR=$$(cat ${TARGET}/.verstr) ; \
+	OUT=$$(cd ${TARGET} && pwd) ; \
+	for ARCH in ${ARCHS}; do \
 		echo "Building for linux $${ARCH}..." ; \
-		CGO_ENABLED=0 GOOS=linux GOARCH=$${ARCH} go build -trimpath -a -ldflags "$$(cat ${TARGET}/.ldflags)" -o ${TARGET}/${BINNAME}_linux_$${ARCH} || exit 1 ;\
+		STAGE=$$(mktemp -d) ; \
+		CGO_ENABLED=0 GOOS=linux GOARCH=$${ARCH} go build -trimpath -a -ldflags "$$(cat ${TARGET}/.ldflags)" -o $$STAGE/${BINNAME} || exit 1 ;\
+		tar -czf $$OUT/${BINNAME}-v$${VERSTR}-linux-$${ARCH}.tar.gz -C $$STAGE ${BINNAME} || exit 1 ;\
+		rm -rf $$STAGE ;\
 	done; \
 	echo "Done."
 
-mac: prepare	## Make Darwin (Mac) x86 and x64 Binaries
-	@for ARCH in ${ARCHS}; do \
+mac: prepare	## Make Darwin (Mac) x64/arm64 release archives (nullops-v<ver>-darwin-<arch>.tar.gz)
+	@VERSTR=$$(cat ${TARGET}/.verstr) ; \
+	OUT=$$(cd ${TARGET} && pwd) ; \
+	for ARCH in ${ARCHS}; do \
 		if [ "$${ARCH}" != "386" ]; then \
 			echo "Building for mac $${ARCH}..." ; \
-			CGO_ENABLED=0 GOOS=darwin GOARCH=$${ARCH} go build -trimpath -a -ldflags "$$(cat ${TARGET}/.ldflags)" -o ${TARGET}/${BINNAME}_darwin_$${ARCH} || exit 1 ;\
+			STAGE=$$(mktemp -d) ; \
+			CGO_ENABLED=0 GOOS=darwin GOARCH=$${ARCH} go build -trimpath -a -ldflags "$$(cat ${TARGET}/.ldflags)" -o $$STAGE/${BINNAME} || exit 1 ;\
+			tar -czf $$OUT/${BINNAME}-v$${VERSTR}-darwin-$${ARCH}.tar.gz -C $$STAGE ${BINNAME} || exit 1 ;\
+			rm -rf $$STAGE ;\
 		fi;\
 	done; \
 	echo "Done."
@@ -144,11 +160,12 @@ clean: ## Delete any binaries and generated front-end files
 	go clean -i -n ${PACKAGENAME} ; \
 	echo "Done."
 
-local: prepare	## Build for the local OS/architecture
+local: prepare	## Build a runnable binary for the local OS/arch (build/nullops[.exe])
 	@OS=$$(uname | tr '[:upper:]' '[:lower:]') ; \
 	ARCH=$$(if [ "$$(uname -m)" = "x86_64" ]; then echo "amd64"; else echo "arm64"; fi) ; \
+	EXT=$$(if [ "$$OS" = "windows" ]; then echo ".exe"; fi) ; \
 	echo "Building for $$OS ($$ARCH)..." ; \
-	CGO_ENABLED=0 GOOS=$$OS GOARCH=$$ARCH go build -trimpath -ldflags "$$(cat ${TARGET}/.ldflags)" -o ${TARGET}/${BINNAME}_$$OS\_$$ARCH || exit 1 ; \
+	CGO_ENABLED=0 GOOS=$$OS GOARCH=$$ARCH go build -trimpath -ldflags "$$(cat ${TARGET}/.ldflags)" -o ${TARGET}/${BINNAME}$$EXT || exit 1 ; \
 	echo "Done."
 
 all: ## Make Windows, Linux and Mac x86/x64 Binaries

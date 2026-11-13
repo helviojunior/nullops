@@ -59,7 +59,7 @@
 - [ ] `make assets` (front-end + bundle) executado
 - [ ] `make test` (Go) passando
 - [ ] `make test-frontend` passando
-- [ ] `make local` compila e `./build/nullops_<os>_<arch> --help` executa
+- [ ] `make local` compila e `./build/nullops --help` executa
 - [ ] Testei a interface web no navegador (`nullops web`), se aplicável
 - [ ] Testei com e sem `--no-tls`, se aplicável
 

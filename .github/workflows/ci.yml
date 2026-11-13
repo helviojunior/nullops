@@ -97,7 +97,7 @@ jobs:
 
     - name: Smoke test binary
       run: |
-        BIN=./build/nullops_linux_amd64
+        BIN=./build/nullops
         test -x "$BIN" || { echo "❌ $BIN not found"; ls -la ./build; exit 1; }
         "$BIN" version
         "$BIN" --help > /dev/null

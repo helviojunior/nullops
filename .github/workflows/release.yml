@@ -61,7 +61,14 @@ jobs:
       run: VER="$VER" make all FRONTEND_BUILDER=local
 
     - name: Smoke test linux/amd64 binary
-      run: ./build/nullops_linux_amd64 version
+      env:
+        VER: ${{ steps.vars.outputs.version }}
+      run: |
+        ARCHIVE="build/nullops-v${VER}-linux-amd64.tar.gz"
+        test -f "$ARCHIVE" || { echo "❌ $ARCHIVE not found"; ls -la build; exit 1; }
+        TMP=$(mktemp -d)
+        tar -xzf "$ARCHIVE" -C "$TMP"
+        "$TMP/nullops" version
 
     - name: Generate SHA256SUMS
       working-directory: build

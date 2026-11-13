@@ -265,9 +265,12 @@ Pipeline:
 3. `go build`: `//go:embed bundle.bin`; at runtime the bundle is decrypted into RAM
 
 CI and releases run on GitHub Actions (`.github/workflows`): a published release builds every platform and
-attaches the binaries and `SHA256SUMS`.
+attaches the per-platform archives and `SHA256SUMS`.
 
-Binaries go to `./build/nullops_<os>_<arch>[.exe]`. `VER=1.2.3 make all` sets the version.
+`make all` produces release archives in `./build/` named
+`nullops-v<ver>-<os>-<arch>.tar.gz` (linux/darwin) or `nullops-v<ver>-<os>-<arch>.zip` (windows), each holding a
+single binary named `nullops` (or `nullops.exe`). `VER=1.2.3 make all` sets the version. `make local` builds a
+runnable `./build/nullops[.exe]` for the host.
 
 ### Front-end development
 
