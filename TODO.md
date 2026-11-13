@@ -75,6 +75,15 @@ Legend: `[x]` done · `[ ]` pending · `[~]` partial
       `.nullops-upload-<id>.part`; per-file size limit `--max-upload 2G`
 - [x] Encrypted streamed download with progress
 - [x] Download a folder or a multiple selection as a zip built on the fly (streamed, no temporary file)
+- [x] **Transfers**: header icon with a ring showing the overall progress (like Firefox) and a `/transfers` page
+      (progress, speed, time left, cancel, cancel all, clear finished); transfers keep running while browsing
+- [x] Cancel downloads and uploads (the server logs `download canceled`; a canceled upload resumes later)
+- [x] Reload / close with transfers running asks first (browser dialog); signing out asks in a system modal
+- [x] Big downloads (≥ 256 MB) on Chrome/Edge are written straight to disk while downloading (File System Access
+      API); elsewhere the data is packed into Blobs every 32 MB instead of piling up in the JavaScript heap;
+      progress re-renders at most ~4×/s
+- [x] Opening a folder clears the previous list, shows a loading state and fills in when the server answers
+      (late answers for a folder already left are ignored)
 - [x] Copy / move with a folder picker (tree), and drag and drop of files onto folders in the table or in the
       side panel (move; hold Ctrl/⌥ to copy)
 - [x] Sort by name / size / date (folders first, natural order) and filter by type
@@ -148,4 +157,6 @@ Legend: `[x]` done · `[ ]` pending · `[~]` partial
 ### Not verified yet
 - [ ] A real Let's Encrypt issuance with `create-tls --acme` (needs a public domain and port 80)
 - [ ] The GitHub Actions workflows on GitHub (validated as YAML only; the repo has no remote yet)
+- [ ] Huge downloads on Firefox/Safari still assemble the file in the browser (no File System Access API): a
+      Service Worker streaming the decrypted data to the native download manager would remove that limit
 - [ ] Clean-up of abandoned `.nullops-upload-*.part` files (today they stay until the same file is uploaded again)

@@ -15,6 +15,9 @@ import {
 import { useAuth } from "contexts/AuthContext";
 import { TreeProvider } from "contexts/TreeContext";
 import Logo from "components/brand/Logo";
+import TransferIndicator from "components/files/TransferIndicator";
+import { useTransfers } from "contexts/TransferContext";
+import { useDialog } from "contexts/DialogContext";
 import FolderTree, { TREE_DEFAULT, TREE_MAX, TREE_MIN } from "components/layout/FolderTree";
 import { parentPath, routeToPath } from "lib/utils";
 import { useI18n, LANGUAGE_OPTIONS } from "i18n";
@@ -93,6 +96,22 @@ export default function AppLayout({ darkMode, setDarkMode }) {
     }
   }, [panel]);
 
+  const transfers = useTransfers();
+  const { confirm } = useDialog();
+  // signing out ends the session: running transfers would be cut
+  const signOut = async () => {
+    if (transfers.summary.running) {
+      const ok = await confirm({
+        title: t("transfers.logoutTitle"),
+        description: tf("transfers.logoutDesc", { n: transfers.summary.running }),
+        variant: "warning",
+        confirmLabel: t("nav.logout"),
+      });
+      if (ok !== true) return;
+      transfers.cancelAll();
+    }
+    logout();
+  };
   const setWidth = (width) => setPanel((p) => ({ ...p, width }));
   const setTab = (tab) => setPanel((p) => ({ ...p, tab }));
   const padMatch = location.pathname.match(/^\/pad\/([^/]+)$/);
@@ -138,6 +157,7 @@ export default function AppLayout({ darkMode, setDarkMode }) {
         )}
         <div className="ml-auto flex items-center gap-2">
           <LanguageSelect className="hidden sm:inline-flex" />
+          <TransferIndicator />
           <ThemeToggle darkMode={darkMode} setDarkMode={setDarkMode} />
           {user.auth && (
             <>
@@ -149,7 +169,7 @@ export default function AppLayout({ darkMode, setDarkMode }) {
                 <UserRound className="h-4 w-4" />
                 <span className="hidden md:inline">{user.username}</span>
               </Link>
-              <Button variant="ghost" size="sm" onClick={logout} title={t("nav.logout")}>
+              <Button variant="ghost" size="sm" onClick={signOut} title={t("nav.logout")}>
                 <LogOut className="h-4 w-4" />
                 <span className="hidden sm:inline">{t("nav.logout")}</span>
               </Button>

@@ -3,12 +3,14 @@ import { createBrowserRouter, Navigate, Outlet, RouterProvider } from "react-rou
 import { AuthProvider } from "contexts/AuthContext";
 import { DialogProvider } from "contexts/DialogContext";
 import { ToastProvider } from "contexts/ToastContext";
+import { TransferProvider } from "contexts/TransferContext";
 import { I18nProvider } from "i18n";
 import AppLayout from "components/layout/AppLayout";
 import Login from "pages/Login";
 import Browser from "pages/Browser";
 import { Loader2 } from "lucide-react";
 import Viewer from "pages/Viewer";
+import Transfers from "pages/Transfers";
 
 // The editor pulls CodeMirror in: loaded only when a file is opened.
 const Editor = lazy(() => import("pages/Editor"));
@@ -47,7 +49,9 @@ function Root() {
       <ToastProvider>
         <AuthProvider>
           <DialogProvider>
-            <Outlet />
+            <TransferProvider>
+              <Outlet />
+            </TransferProvider>
           </DialogProvider>
         </AuthProvider>
       </ToastProvider>
@@ -77,6 +81,7 @@ const router = createBrowserRouter([
           { path: "/view/*", element: <Viewer /> },
           { path: "/pad/:name", element: <Lazy><PadEditor /></Lazy> },
           { path: "/account", element: <Account /> },
+          { path: "/transfers", element: <Transfers /> },
         ],
       },
       { path: "*", element: <Navigate to="/files" replace /> },

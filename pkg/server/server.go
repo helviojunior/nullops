@@ -412,7 +412,10 @@ func (s *Server) download(w http.ResponseWriter, r *http.Request, sess *session.
 	if sess.Cipher == nil {
 		h.Set("Content-Length", strconv.FormatInt(size, 10))
 		w.WriteHeader(200)
-		io.CopyN(w, fh, size)
+		if n, err := io.CopyN(w, fh, size); err != nil && r.Context().Err() != nil {
+			auditInfo("download canceled", "user", c.Username, "ip", s.clientIP(r), "path", "/"+req.Path,
+				"sent", n, "size", size)
+		}
 		return
 	}
 	h.Set("Content-Length", strconv.FormatInt(size+frames*32, 10))
@@ -423,6 +426,9 @@ func (s *Server) download(w http.ResponseWriter, r *http.Request, sess *session.
 		n, err := io.ReadFull(fh, buf)
 		if n > 0 {
 			if _, werr := w.Write(sess.Cipher.Frame(buf[:n])); werr != nil {
+				// the browser canceled the transfer (or the connection dropped)
+				auditInfo("download canceled", "user", c.Username, "ip", s.clientIP(r), "path", "/"+req.Path,
+					"sent", sent, "size", size)
 				return
 			}
 			sent += int64(n)
@@ -554,7 +560,11 @@ func (s *Server) downloadZip(w http.ResponseWriter, r *http.Request, sess *sessi
 	w.WriteHeader(200)
 	fw := &frameWriter{w: w, c: sess.Cipher, buf: make([]byte, 0, downloadChunk)}
 	if err := s.cfg.FS.ZipTo(fw, paths); err != nil {
-		log.Debug("zip stream aborted", "err", err)
+		if fw.err != nil {
+			auditInfo("download canceled", "user", c.Username, "ip", s.clientIP(r), "paths", "/"+strings.Join(paths, ", /"))
+		} else {
+			log.Debug("zip stream aborted", "err", err)
+		}
 		return // the client sees a truncated stream and reports the failure
 	}
 	fw.flush()

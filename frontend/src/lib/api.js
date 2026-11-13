@@ -93,13 +93,18 @@ export class ApiClient {
   }
 
   // target: a file path, or {paths: [...]} / a folder -> streamed zip.
-  async download(target, onProgress) {
+  // signal (AbortSignal) cancels the transfer: the request is aborted and the
+  // promise rejects with an AbortError (see isAbort).
+  // sink: optional writable stream (File System Access API) to save straight
+  // to disk; the promise then resolves to null.
+  async download(target, onProgress, signal, sink) {
     const payload = typeof target === "string" ? { path: target } : target;
     const envelope = await this.crypto.encryptJson(payload);
     const resp = await fetch("/api/download", {
       method: "POST",
       headers: this.headers(),
       body: JSON.stringify(envelope),
+      signal,
     });
     if (!resp.ok) {
       const err = await resp.json().catch(() => ({}));
@@ -107,20 +112,29 @@ export class ApiClient {
     }
     const total = Number(resp.headers.get("X-File-Size") || 0);
     let got = 0;
-    return this.crypto.decryptStream(resp.body, (n) => {
-      got += n;
-      if (onProgress) onProgress(got, total);
-    });
+    return this.crypto.decryptStream(
+      resp.body,
+      (n) => {
+        got += n;
+        if (onProgress) onProgress(got, total);
+      },
+      signal,
+      sink
+    );
   }
 
   // Resumable, chunked upload. A dropped connection is retried; uploading the
   // same file again (same name, size and date) resumes where it stopped.
-  async upload(path, file, onProgress) {
+  // signal (AbortSignal) stops after the chunk in flight; what was sent stays
+  // on the server and the next upload of the same file resumes from there.
+  async upload(path, file, onProgress, signal) {
     const base = { path, name: file.name, upload_id: uploadId(file), size: file.size };
+    throwIfAborted(signal);
     const status = await this.call("upload", { ...base, status: true });
     let offset = Math.min(status.received || 0, file.size);
     if (onProgress && offset) onProgress(offset, file.size);
     for (;;) {
+      throwIfAborted(signal);
       const end = Math.min(offset + UPLOAD_CHUNK, file.size);
       const bytes = new Uint8Array(await file.slice(offset, end).arrayBuffer());
       const last = end >= file.size;
@@ -132,6 +146,12 @@ export class ApiClient {
       if (last) return result;
     }
   }
+}
+
+export const isAbort = (err) => err?.name === "AbortError";
+
+function throwIfAborted(signal) {
+  if (signal?.aborted) throw new DOMException("Transfer canceled", "AbortError");
 }
 
 // Stable id for a file: same name + size + modification time -> same id, so
@@ -160,7 +180,7 @@ export async function withRetry(fn, attempts = 4, delay = 1000) {
     try {
       return await fn();
     } catch (err) {
-      const transient = !(err instanceof ApiError) || err.status >= 500 || err.status === 0;
+      const transient = !isAbort(err) && (!(err instanceof ApiError) || err.status >= 500 || err.status === 0);
       if (!transient || i >= attempts - 1) throw err;
       await new Promise((r) => setTimeout(r, delay * 2 ** i));
     }

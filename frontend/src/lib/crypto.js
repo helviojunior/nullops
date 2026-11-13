@@ -4,6 +4,8 @@
 //   -> AES-256-GCM.
 // The AES key never leaves this CryptoKey object (non-extractable, memory only).
 
+const BLOB_BATCH = 32 * 1024 * 1024;
+
 const HKDF_INFO = new TextEncoder().encode("nullops/aesgcm/v1");
 
 export function b64urlEncode(bytes) {
@@ -130,23 +132,51 @@ export class SessionCrypto {
 
   // Streams and decrypts length-prefixed frames:
   //   [4-byte BE len][12-byte iv][len bytes ct||tag]
-  async decryptStream(body, onBytes) {
+  // With a sink (a FileSystemWritableFileStream) every decrypted chunk is
+  // written straight to disk and nothing is kept in memory. Without one, the
+  // chunks are packed into Blobs every BLOB_BATCH bytes, so the data leaves
+  // the JavaScript heap (the browser may keep large Blobs on disk) instead of
+  // piling up as one huge array.
+  async decryptStream(body, onBytes, signal, sink) {
     const reader = body.getReader();
+    const check = () => {
+      if (signal?.aborted) {
+        reader.cancel().catch(() => {});
+        throw new DOMException("Transfer canceled", "AbortError");
+      }
+    };
+    const blobs = [];
+    let parts = [];
+    let pending = 0;
+    const emit = async (chunk) => {
+      if (onBytes) onBytes(chunk.byteLength);
+      if (sink) return sink.write(chunk);
+      parts.push(chunk);
+      pending += chunk.byteLength;
+      if (pending >= BLOB_BATCH) {
+        blobs.push(new Blob(parts));
+        parts = [];
+        pending = 0;
+      }
+    };
+    const finish = () => {
+      if (sink) return null;
+      if (parts.length) blobs.push(new Blob(parts));
+      return new Blob(blobs);
+    };
+
     if (this.plain) {
-      const parts = [];
       for (;;) {
         const { done, value } = await reader.read();
-        if (value) {
-          parts.push(value);
-          if (onBytes) onBytes(value.length);
-        }
-        if (done) return new Blob(parts);
+        check();
+        if (value) await emit(value);
+        if (done) return finish();
       }
     }
     let buf = new Uint8Array(0);
-    const parts = [];
     for (;;) {
       const { done, value } = await reader.read();
+      check();
       if (value) {
         const merged = new Uint8Array(buf.length + value.length);
         merged.set(buf);
@@ -157,17 +187,17 @@ export class SessionCrypto {
           const n = new DataView(buf.buffer, buf.byteOffset + off, 4).getUint32(0, false);
           if (buf.length - off < 16 + n) break;
           const iv = buf.slice(off + 4, off + 16);
-          const ct = buf.slice(off + 16, off + 16 + n);
+          const ct = buf.subarray(off + 16, off + 16 + n);
           const pt = await window.crypto.subtle.decrypt({ name: "AES-GCM", iv }, this.aesKey, ct);
-          parts.push(new Uint8Array(pt));
-          if (onBytes) onBytes(pt.byteLength);
+          await emit(new Uint8Array(pt));
           off += 16 + n;
+          check();
         }
         buf = buf.slice(off);
       }
       if (done) break;
     }
     if (buf.length) throw new Error("Truncated download");
-    return new Blob(parts);
+    return finish();
   }
 }

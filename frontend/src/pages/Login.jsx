@@ -73,7 +73,8 @@ export default function Login({ darkMode, setDarkMode }) {
         <LanguageSelect />
         <ThemeToggle darkMode={darkMode} setDarkMode={setDarkMode} />
       </div>
-      <div className="flex flex-1 items-center justify-center p-4">
+      {/* centered, a bit above the middle on taller screens */}
+      <div className="flex flex-1 items-center justify-center p-4 md:pb-[18vh]">
         <Card className="w-full max-w-[420px] animate-fade-in">
           <CardHeader className="items-center text-center">
             <Logo className="mb-3 h-14" alt={t("app.name")} />

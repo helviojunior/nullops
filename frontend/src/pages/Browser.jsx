@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { useApi, useAuth } from "contexts/AuthContext";
 import { useTree } from "contexts/TreeContext";
+import { useTransfers } from "contexts/TransferContext";
 import { useDialog } from "contexts/DialogContext";
 import { useToast } from "contexts/ToastContext";
 import { useI18n } from "i18n";
@@ -34,7 +35,6 @@ import { Input } from "components/ui/input";
 import { Checkbox } from "components/ui/checkbox";
 import { ActionMenu } from "components/ui/menu";
 import FileIcon from "components/files/FileIcon";
-import Transfers from "components/files/Transfers";
 import FolderPicker from "components/files/FolderPicker";
 import { canDrop, getDragPaths, isInternalDrag, setDragPaths, useTransfer } from "lib/useTransfer";
 import { errorText } from "lib/errors";
@@ -53,7 +53,6 @@ import {
   parentPath,
   pathToRoute,
   routeToPath,
-  saveBlob,
 } from "lib/utils";
 
 const validName = (n) => !!n && n !== "." && n !== ".." && !/[\\/\0]/.test(n);
@@ -129,7 +128,7 @@ export default function Browser() {
   const [results, setResults] = useState(null); // search results
   const [searching, setSearching] = useState(false);
   const [dragging, setDragging] = useState(false);
-  const [transfers, setTransfers] = useState([]);
+  const transfers = useTransfers();
   const fileInput = useRef(null);
   const transfer = useTransfer();
   const [picker, setPicker] = useState(null); // {paths, action}
@@ -165,28 +164,36 @@ export default function Browser() {
   const showDate = listWidth >= 700;
   const showPerms = listWidth >= 860;
   const dragDepth = useRef(0);
-  const seq = useRef(0);
 
   const readonly = !!user?.readonly;
   const err = useCallback((e) => errorText(e, lang), [lang]);
 
+  // Only the latest request may fill the screen: a slow answer for a folder
+  // the user already left is dropped.
+  const loadSeq = useRef(0);
   const load = useCallback(async () => {
+    const mine = ++loadSeq.current;
     setLoading(true);
     setError("");
     try {
       const res = await run((c) => c.call("list", { path }));
+      if (mine !== loadSeq.current) return;
       setListing(res);
       tree.update(path, res.entries);
     } catch (e) {
+      if (mine !== loadSeq.current) return;
       if (e.status !== 401) setError(err(e));
       setListing(null);
     } finally {
-      setLoading(false);
+      if (mine === loadSeq.current) setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [run, path, err]);
 
+  // Opening a folder: clear the previous folder's items right away, show the
+  // loading state, then fill the list when the server answers.
   useEffect(() => {
+    setListing(null);
     setSelected({});
     setQuery("");
     setResults(null);
@@ -253,58 +260,21 @@ export default function Browser() {
     else download(entry);
   };
 
-  // ---- transfers -----------------------------------------------------------
-  const track = (item) => {
-    const id = ++seq.current;
-    setTransfers((all) => [...all.filter((x) => x.state === "running" || Date.now() - x.ts < 15000), { id, ts: Date.now(), state: "running", done: 0, ...item }]);
-    return (patch) => setTransfers((all) => all.map((x) => (x.id === id ? { ...x, ...patch, ts: Date.now() } : x)));
-  };
+  // ---- transfers (global: they keep running while browsing, see /transfers) --
+  const download = (entry) => transfers.download(entry);
 
-  const download = async (entry) => {
-    const name = entry.is_dir ? `${entry.name}.zip` : entry.name;
-    const update = track({ kind: "download", name, total: entry.is_dir ? 0 : entry.size });
-    try {
-      const blob = await run((c) => c.download(entry.path, (done, total) => update({ done, total: total || done })));
-      update({ state: "done", done: blob.size, total: blob.size });
-      saveBlob(blob, name);
-    } catch (e) {
-      update({ state: "error", error: err(e) });
-    }
-  };
-
-  const downloadSelection = async (paths) => {
+  const downloadSelection = (paths) => {
     if (paths.length === 1) {
       const entry = entries.find((x) => x.path === paths[0]);
-      if (entry) return download(entry);
+      if (entry) return transfers.download(entry);
     }
     const stamp = new Date().toISOString().slice(0, 19).replace(/\D/g, "").replace(/^(\d{8})/, "$1_");
-    const name = `${baseName(path) || "files"}_${stamp}.zip`;
-    const update = track({ kind: "download", name, total: 0 });
-    try {
-      const blob = await run((c) => c.download({ paths }, (done) => update({ done, total: done })));
-      update({ state: "done", done: blob.size, total: blob.size });
-      saveBlob(blob, name);
-    } catch (e) {
-      update({ state: "error", error: err(e) });
-    }
+    return transfers.downloadZip(paths, `${baseName(path) || "files"}_${stamp}.zip`);
   };
 
-  const uploadFiles = async (files) => {
+  const uploadFiles = (files) => {
     if (readonly || !files.length) return;
-    let ok = 0;
-    for (const file of files) {
-      const update = track({ kind: "upload", name: file.name, total: file.size });
-      try {
-        await run((c) => c.upload(path, file, (done, total) => update({ done, total })));
-        update({ state: "done", done: file.size });
-        ok++;
-      } catch (e) {
-        update({ state: "error", error: err(e) });
-        if (e.status === 401) break;
-      }
-    }
-    if (ok === 1 && files.length === 1) toast.success(tf("toast.uploaded", { name: files[0].name }));
-    load();
+    transfers.upload(path, files);
   };
 
   // ---- actions -------------------------------------------------------------
@@ -565,12 +535,16 @@ export default function Browser() {
       )}
 
       {/* listing */}
+      <div className="relative h-0.5 shrink-0 overflow-hidden">
+        {loading && <div className="absolute inset-y-0 w-1/3 animate-loading-bar bg-primary" />}
+      </div>
       <div ref={listRef} className="min-h-0 flex-1 overflow-auto scrollbar-thin">
         {error ? (
           <div className="p-8 text-center text-sm text-red-500">{error}</div>
         ) : loading && !listing ? (
-          <div className="flex justify-center p-12 text-muted-foreground">
-            <Loader2 className="h-6 w-6 animate-spin" />
+          <div className="flex flex-col items-center justify-center gap-3 p-16 text-sm text-muted-foreground">
+            <Loader2 className="h-7 w-7 animate-spin text-primary" />
+            {t("browser.loading")}
           </div>
         ) : (
           <table className="w-full text-sm">
@@ -762,7 +736,6 @@ export default function Browser() {
         }}
       />
 
-      <Transfers items={transfers} onClear={() => setTransfers((all) => all.filter((x) => x.state === "running"))} />
     </div>
   );
 }

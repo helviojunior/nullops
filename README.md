@@ -128,6 +128,17 @@ folder being browsed. Drag its right edge to resize it (double-click resets the
 width). Hide or show it with the button at the top left of the header. The
 width and open/closed state are remembered per browser.
 
+### Transfers
+
+Downloads and uploads run in the background while you keep browsing. The
+download icon in the header shows a ring with the overall progress, and clicking
+it opens the **Transfers** page (progress, speed, time left, cancel). Reloading or
+closing the page with transfers running asks first.
+
+Folders and selections download as a zip built on the fly. On Chrome and Edge,
+files of 256 MB or more are written straight to disk while they download (the
+browser asks where to save first).
+
 ### Opening a file
 
 Clicking a file asks the server to sniff the **MIME type of its first 4096
