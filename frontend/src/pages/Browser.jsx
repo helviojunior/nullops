@@ -1,0 +1,595 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import {
+  ArrowUp,
+  ChevronRight,
+  Copy,
+  Download,
+  FileArchive,
+  FilePlus2,
+  FolderInput,
+  FolderPlus,
+  Home,
+  KeyRound,
+  Loader2,
+  PackageOpen,
+  Pencil,
+  RefreshCw,
+  Search,
+  SquarePen,
+  Trash2,
+  Upload,
+  X,
+} from "lucide-react";
+import { useApi, useAuth } from "contexts/AuthContext";
+import { useDialog } from "contexts/DialogContext";
+import { useToast } from "contexts/ToastContext";
+import { useI18n } from "i18n";
+import { Button } from "components/ui/button";
+import { Input } from "components/ui/input";
+import { Checkbox } from "components/ui/checkbox";
+import FileIcon from "components/files/FileIcon";
+import Transfers from "components/files/Transfers";
+import { errorText } from "lib/errors";
+import {
+  baseName,
+  cn,
+  humanSize,
+  isArchive,
+  isEditable,
+  joinPath,
+  parentPath,
+  pathToRoute,
+  routeToPath,
+  saveBlob,
+} from "lib/utils";
+
+const validName = (n) => !!n && n !== "." && n !== ".." && !/[\\/\0]/.test(n);
+
+function IconButton({ title, onClick, children, danger }) {
+  return (
+    <button
+      type="button"
+      title={title}
+      aria-label={title}
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+      className={cn(
+        "rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted",
+        danger ? "hover:text-red-500" : "hover:text-foreground"
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+function Breadcrumb({ path }) {
+  const { t } = useI18n();
+  const parts = path ? path.split("/") : [];
+  return (
+    <nav className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto text-sm scrollbar-thin">
+      <Link to="/files" className="flex items-center gap-1 rounded px-1.5 py-1 text-muted-foreground hover:bg-muted hover:text-foreground">
+        <Home className="h-4 w-4" />
+        <span className="hidden sm:inline">{t("browser.root")}</span>
+      </Link>
+      {parts.map((p, i) => {
+        const sub = parts.slice(0, i + 1).join("/");
+        const last = i === parts.length - 1;
+        return (
+          <span key={sub} className="flex items-center gap-1">
+            <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+            {last ? (
+              <span className="whitespace-nowrap rounded px-1.5 py-1 font-medium">{p}</span>
+            ) : (
+              <Link
+                to={pathToRoute("/files", sub)}
+                className="whitespace-nowrap rounded px-1.5 py-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
+                {p}
+              </Link>
+            )}
+          </span>
+        );
+      })}
+    </nav>
+  );
+}
+
+export default function Browser() {
+  const params = useParams();
+  const path = routeToPath(params["*"]);
+  const navigate = useNavigate();
+  const run = useApi();
+  const { user } = useAuth();
+  const dialog = useDialog();
+  const toast = useToast();
+  const { t, tf, lang } = useI18n();
+
+  const [listing, setListing] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [selected, setSelected] = useState({});
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState(null); // search results
+  const [searching, setSearching] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  const [transfers, setTransfers] = useState([]);
+  const fileInput = useRef(null);
+  const dragDepth = useRef(0);
+  const seq = useRef(0);
+
+  const readonly = !!user?.readonly;
+  const err = useCallback((e) => errorText(e, lang), [lang]);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await run((c) => c.call("list", { path }));
+      setListing(res);
+    } catch (e) {
+      if (e.status !== 401) setError(err(e));
+      setListing(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [run, path, err]);
+
+  useEffect(() => {
+    setSelected({});
+    setQuery("");
+    setResults(null);
+    load();
+  }, [load]);
+
+  const entries = useMemo(() => (results ? results : listing?.entries || []), [results, listing]);
+  const selectedPaths = Object.keys(selected).filter((k) => selected[k]);
+  const allSelected = entries.length > 0 && selectedPaths.length === entries.length;
+
+  // ---- helpers -----------------------------------------------------------
+  const act = async (fn, okMsg) => {
+    try {
+      await run(fn);
+      if (okMsg) toast.success(okMsg);
+      setSelected({});
+      if (results) setResults(null);
+      await load();
+    } catch (e) {
+      if (e.status !== 401) toast.error(err(e));
+    }
+  };
+
+  // Used as onSubmit of prompts: errors keep the dialog open.
+  const submit = (fn) => async (value) => {
+    await run((c) => fn(c, value)).catch((e) => {
+      throw new Error(err(e));
+    });
+  };
+
+  const open = (entry) => {
+    if (entry.is_dir) navigate(pathToRoute("/files", entry.path));
+    else if (isEditable(entry.name)) navigate(pathToRoute("/edit", entry.path));
+    else download(entry);
+  };
+
+  // ---- transfers -----------------------------------------------------------
+  const track = (item) => {
+    const id = ++seq.current;
+    setTransfers((all) => [...all.filter((x) => x.state === "running" || Date.now() - x.ts < 15000), { id, ts: Date.now(), state: "running", done: 0, ...item }]);
+    return (patch) => setTransfers((all) => all.map((x) => (x.id === id ? { ...x, ...patch, ts: Date.now() } : x)));
+  };
+
+  const download = async (entry) => {
+    const update = track({ kind: "download", name: entry.name, total: entry.size });
+    try {
+      const blob = await run((c) => c.download(entry.path, (done, total) => update({ done, total })));
+      update({ state: "done", done: blob.size, total: blob.size });
+      saveBlob(blob, entry.name);
+    } catch (e) {
+      update({ state: "error", error: err(e) });
+    }
+  };
+
+  const uploadFiles = async (files) => {
+    if (readonly || !files.length) return;
+    let ok = 0;
+    for (const file of files) {
+      const update = track({ kind: "upload", name: file.name, total: file.size });
+      try {
+        await run((c) => c.upload(path, file, (done, total) => update({ done, total })));
+        update({ state: "done", done: file.size });
+        ok++;
+      } catch (e) {
+        update({ state: "error", error: err(e) });
+        if (e.status === 401) break;
+      }
+    }
+    if (ok === 1 && files.length === 1) toast.success(tf("toast.uploaded", { name: files[0].name }));
+    load();
+  };
+
+  // ---- actions -------------------------------------------------------------
+  const newFolder = () =>
+    dialog.prompt({
+      title: t("dialog.newFolder"),
+      label: t("dialog.name"),
+      confirmLabel: t("common.create"),
+      validate: (v) => (validName(v.trim()) ? "" : t("dialog.invalidName")),
+      onSubmit: submit((c, v) => c.call("mkdir", { path, name: v.trim() })),
+    }).then((v) => v !== null && (toast.success(tf("toast.created", { name: v.trim() })), load()));
+
+  const newFile = () =>
+    dialog.prompt({
+      title: t("dialog.newFile"),
+      label: t("dialog.name"),
+      confirmLabel: t("common.create"),
+      validate: (v) => (validName(v.trim()) ? "" : t("dialog.invalidName")),
+      onSubmit: submit((c, v) => c.call("touch", { path, name: v.trim() })),
+    }).then((v) => {
+      if (v === null) return;
+      toast.success(tf("toast.created", { name: v.trim() }));
+      if (isEditable(v.trim())) navigate(pathToRoute("/edit", joinPath(path, v.trim())));
+      else load();
+    });
+
+  const rename = (entry) =>
+    dialog.prompt({
+      title: tf("dialog.rename", { name: entry.name }),
+      label: t("dialog.name"),
+      defaultValue: entry.name,
+      selectStem: !entry.is_dir,
+      validate: (v) => (validName(v.trim()) ? "" : t("dialog.invalidName")),
+      onSubmit: submit((c, v) => c.call("rename", { path: entry.path, name: v.trim() })),
+    }).then((v) => v !== null && (toast.success(tf("toast.renamed", { name: v.trim() })), load()));
+
+  const copyMove = (paths, action) =>
+    dialog.prompt({
+      title: tf(action === "copy" ? "dialog.copyTo" : "dialog.moveTo", { n: paths.length }),
+      hint: t("dialog.destHint"),
+      defaultValue: path,
+      placeholder: "/",
+      onSubmit: submit((c, v) => c.call(action, { paths, dest: v.trim().replace(/^\/+|\/+$/g, "") })),
+    }).then((v) => {
+      if (v === null) return;
+      toast.success(tf(action === "copy" ? "toast.copied" : "toast.moved", { n: paths.length }));
+      setSelected({});
+      load();
+    });
+
+  const chmod = (entry) =>
+    dialog.prompt({
+      title: tf("dialog.chmod", { name: entry.name }),
+      hint: t("dialog.chmodHint"),
+      defaultValue: (entry.mode & 0o777).toString(8).padStart(3, "0"),
+      validate: (v) => (/^[0-7]{3}$/.test(v.trim()) ? "" : t("dialog.invalidMode")),
+      onSubmit: submit((c, v) => c.call("chmod", { path: entry.path, mode: v.trim() })),
+    }).then((v) => v !== null && (toast.success(t("toast.chmod")), load()));
+
+  const extract = (entry) =>
+    dialog.prompt({
+      title: tf("dialog.extractTitle", { name: entry.name }),
+      variant: "info",
+      noInput: true, // the prompt is used only for its Switch row
+      toggleLabel: t("dialog.extractSub"),
+      toggleDescription: t("dialog.extractSubDesc"),
+      toggleDefault: true,
+      confirmLabel: t("action.extract"),
+      onSubmit: submit((c, v) => c.call("extract", { path: entry.path, to_subfolder: v.toggle })),
+    }).then((v) => v !== null && (toast.success(t("toast.extracted")), load()));
+
+  const archive = (paths, kind) => {
+    const stamp = new Date().toISOString().slice(0, 19).replace(/\D/g, "").replace(/^(\d{8})/, "$1_");
+    const ext = kind === "zip" ? ".zip" : ".tar.gz";
+    const def = paths.length === 1 ? baseName(paths[0]) + ext : `archive_${stamp}${ext}`;
+    return dialog.prompt({
+      title: tf("dialog.archiveTitle", { type: kind === "zip" ? "ZIP" : "TAR.GZ" }),
+      label: t("dialog.archiveName"),
+      defaultValue: def,
+      selectStem: true,
+      validate: (v) => (validName(v.trim()) ? "" : t("dialog.invalidName")),
+      onSubmit: submit((c, v) => c.call(kind, { paths, dest: path, name: v.trim() })),
+    }).then((v) => {
+      if (v === null) return;
+      toast.success(tf("toast.archived", { name: v.trim() }));
+      setSelected({});
+      load();
+    });
+  };
+
+  const remove = (paths) => {
+    const names = paths.length <= 3 ? paths.map((p) => `“${baseName(p)}”`).join(", ") : `${paths.length}`;
+    return dialog.confirm({
+      title: tf("dialog.deleteTitle", { n: paths.length }),
+      description: tf("dialog.deleteDesc", { names }),
+      variant: "danger",
+      confirmLabel: t("action.delete"),
+      onConfirm: () =>
+        run((c) => c.call("delete", { paths })).catch((e) => {
+          throw new Error(err(e));
+        }),
+    }).then((ok) => {
+      if (!ok) return;
+      toast.success(tf("toast.deleted", { n: paths.length }));
+      setSelected({});
+      load();
+    });
+  };
+
+  // ---- search ----------------------------------------------------------------
+  const doSearch = async (e) => {
+    e.preventDefault();
+    const q = query.trim();
+    if (!q) {
+      setResults(null);
+      return;
+    }
+    setSearching(true);
+    setSelected({});
+    try {
+      const r = await run((c) => c.call("search", { path, query: q }));
+      setResults(r.results || []);
+    } catch (e2) {
+      if (e2.status !== 401) toast.error(err(e2));
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  // ---- drag & drop -----------------------------------------------------------
+  const dropHandlers = readonly
+    ? {}
+    : {
+        onDragEnter: (e) => {
+          if (!e.dataTransfer?.types?.includes("Files")) return;
+          e.preventDefault();
+          dragDepth.current++;
+          setDragging(true);
+        },
+        onDragOver: (e) => {
+          if (e.dataTransfer?.types?.includes("Files")) e.preventDefault();
+        },
+        onDragLeave: () => {
+          dragDepth.current = Math.max(0, dragDepth.current - 1);
+          if (!dragDepth.current) setDragging(false);
+        },
+        onDrop: (e) => {
+          e.preventDefault();
+          dragDepth.current = 0;
+          setDragging(false);
+          uploadFiles(Array.from(e.dataTransfer.files || []));
+        },
+      };
+
+  const toggleAll = (v) => setSelected(v ? Object.fromEntries(entries.map((x) => [x.path, true])) : {});
+
+  // ---- render ----------------------------------------------------------------
+  return (
+    <div className="relative flex min-h-0 flex-1 flex-col" {...dropHandlers}>
+      {/* toolbar */}
+      <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-2">
+        <Breadcrumb path={path} />
+        <form onSubmit={doSearch} className="relative w-full sm:w-64">
+          <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={t("browser.search")}
+            className="h-9 pl-8"
+          />
+        </form>
+        <Button variant="outline" size="sm" onClick={load} title={t("browser.refresh")}>
+          <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
+        </Button>
+        {!readonly && (
+          <>
+            <Button variant="outline" size="sm" onClick={newFolder}>
+              <FolderPlus className="h-4 w-4" /> {t("browser.newFolder")}
+            </Button>
+            <Button variant="outline" size="sm" onClick={newFile}>
+              <FilePlus2 className="h-4 w-4" /> {t("browser.newFile")}
+            </Button>
+            <Button size="sm" onClick={() => fileInput.current?.click()}>
+              <Upload className="h-4 w-4" /> {t("browser.upload")}
+            </Button>
+            <input
+              ref={fileInput}
+              type="file"
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                uploadFiles(Array.from(e.target.files || []));
+                e.target.value = "";
+              }}
+            />
+          </>
+        )}
+      </div>
+
+      {/* batch bar */}
+      {selectedPaths.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 border-b border-border bg-primary/5 px-4 py-2 text-sm">
+          <span className="font-medium">{tf("browser.selected", { n: selectedPaths.length })}</span>
+          <div className="ml-auto flex flex-wrap gap-2">
+            {!readonly && (
+              <>
+                <Button variant="outline" size="sm" onClick={() => archive(selectedPaths, "zip")}>
+                  <FileArchive className="h-4 w-4" /> {t("action.zip")}
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => archive(selectedPaths, "tar")}>
+                  <FileArchive className="h-4 w-4" /> {t("action.tar")}
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => copyMove(selectedPaths, "copy")}>
+                  <Copy className="h-4 w-4" /> {t("action.copy")}
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => copyMove(selectedPaths, "move")}>
+                  <FolderInput className="h-4 w-4" /> {t("action.move")}
+                </Button>
+                <Button variant="destructive" size="sm" onClick={() => remove(selectedPaths)}>
+                  <Trash2 className="h-4 w-4" /> {t("action.delete")}
+                </Button>
+              </>
+            )}
+            <Button variant="ghost" size="sm" onClick={() => setSelected({})} title={t("common.close")}>
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {results && (
+        <div className="flex items-center gap-2 border-b border-border px-4 py-2 text-sm text-muted-foreground">
+          <Search className="h-4 w-4" />
+          {tf("browser.searchResults", { n: results.length, q: query.trim() })}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="ml-auto"
+            onClick={() => {
+              setResults(null);
+              setQuery("");
+            }}
+          >
+            <X className="h-4 w-4" /> {t("browser.clearSearch")}
+          </Button>
+        </div>
+      )}
+
+      {/* listing */}
+      <div className="min-h-0 flex-1 overflow-auto scrollbar-thin">
+        {error ? (
+          <div className="p-8 text-center text-sm text-red-500">{error}</div>
+        ) : loading && !listing ? (
+          <div className="flex justify-center p-12 text-muted-foreground">
+            <Loader2 className="h-6 w-6 animate-spin" />
+          </div>
+        ) : (
+          <table className="w-full text-sm">
+            <thead className="sticky top-0 z-10 bg-card text-left text-xs uppercase tracking-wide text-muted-foreground">
+              <tr className="border-b border-border">
+                <th className="w-10 px-4 py-2">
+                  <Checkbox
+                    checked={allSelected}
+                    indeterminate={!allSelected && selectedPaths.length > 0}
+                    onChange={toggleAll}
+                    ariaLabel={t("browser.selectAll")}
+                  />
+                </th>
+                <th className="px-2 py-2 font-medium">{t("browser.name")}</th>
+                <th className="hidden w-28 px-2 py-2 text-right font-medium sm:table-cell">{t("browser.size")}</th>
+                <th className="hidden w-40 px-2 py-2 font-medium md:table-cell">{t("browser.modified")}</th>
+                <th className="hidden w-32 px-2 py-2 font-medium lg:table-cell">{t("browser.perms")}</th>
+                <th className="w-48 px-4 py-2 text-right font-medium">{t("browser.actions")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {path && !results && (
+                <tr
+                  className="cursor-pointer border-b border-border/50 hover:bg-muted/40"
+                  onClick={() => navigate(pathToRoute("/files", parentPath(path)))}
+                >
+                  <td className="px-4 py-2" />
+                  <td className="px-2 py-2 text-muted-foreground" colSpan={5}>
+                    <span className="inline-flex items-center gap-2">
+                      <ArrowUp className="h-4 w-4" /> ..
+                    </span>
+                  </td>
+                </tr>
+              )}
+              {entries.map((e) => (
+                <tr
+                  key={e.path}
+                  className={cn(
+                    "group cursor-pointer border-b border-border/50 hover:bg-muted/40",
+                    selected[e.path] && "bg-primary/10 hover:bg-primary/15"
+                  )}
+                  onClick={() => open(e)}
+                >
+                  <td className="px-4 py-2">
+                    <Checkbox
+                      checked={!!selected[e.path]}
+                      onChange={(v) => setSelected((s) => ({ ...s, [e.path]: v }))}
+                      ariaLabel={e.name}
+                    />
+                  </td>
+                  <td className="max-w-0 px-2 py-2">
+                    <div className="flex items-center gap-2">
+                      <FileIcon entry={e} />
+                      <span className="truncate" title={e.path}>
+                        {results ? e.path : e.name}
+                      </span>
+                      {e.is_link && <span className="text-xs text-muted-foreground">↪</span>}
+                    </div>
+                  </td>
+                  <td className="hidden px-2 py-2 text-right tabular-nums text-muted-foreground sm:table-cell">
+                    {e.is_dir ? "—" : humanSize(e.size)}
+                  </td>
+                  <td className="hidden px-2 py-2 tabular-nums text-muted-foreground md:table-cell">{e.mtime_str}</td>
+                  <td className="hidden px-2 py-2 font-mono text-xs text-muted-foreground lg:table-cell">{e.perms}</td>
+                  <td className="px-4 py-1.5">
+                    <div className="flex justify-end gap-0.5 opacity-70 group-hover:opacity-100">
+                      {!e.is_dir && (
+                        <IconButton title={t("action.download")} onClick={() => download(e)}>
+                          <Download className="h-4 w-4" />
+                        </IconButton>
+                      )}
+                      {!e.is_dir && isEditable(e.name) && (
+                        <IconButton title={t("action.edit")} onClick={() => navigate(pathToRoute("/edit", e.path))}>
+                          <SquarePen className="h-4 w-4" />
+                        </IconButton>
+                      )}
+                      {!readonly && (
+                        <>
+                          {!e.is_dir && isArchive(e.name) && (
+                            <IconButton title={t("action.extract")} onClick={() => extract(e)}>
+                              <PackageOpen className="h-4 w-4" />
+                            </IconButton>
+                          )}
+                          <IconButton title={t("action.rename")} onClick={() => rename(e)}>
+                            <Pencil className="h-4 w-4" />
+                          </IconButton>
+                          <IconButton title={t("action.chmod")} onClick={() => chmod(e)}>
+                            <KeyRound className="h-4 w-4" />
+                          </IconButton>
+                          <IconButton title={t("action.delete")} danger onClick={() => remove([e.path])}>
+                            <Trash2 className="h-4 w-4" />
+                          </IconButton>
+                        </>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {!entries.length && !loading && (
+                <tr>
+                  <td colSpan={6} className="p-12 text-center text-muted-foreground">
+                    {results ? tf("browser.noResults", { q: query.trim() }) : t("browser.empty")}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {listing && !results && (
+        <div className="border-t border-border px-4 py-1.5 text-xs text-muted-foreground">
+          {tf("browser.summary", { d: listing.dir_count, f: listing.file_count, s: humanSize(listing.total_size) })}
+          {searching && <Loader2 className="ml-2 inline h-3 w-3 animate-spin" />}
+        </div>
+      )}
+
+      {dragging && (
+        <div className="pointer-events-none absolute inset-2 z-20 flex items-center justify-center rounded-xl border-2 border-dashed border-primary bg-primary/10">
+          <div className="flex items-center gap-2 rounded-lg bg-card px-4 py-3 text-sm font-medium shadow">
+            <Upload className="h-4 w-4 text-primary" /> {t("browser.dropHere")}
+          </div>
+        </div>
+      )}
+
+      <Transfers items={transfers} onClear={() => setTransfers((all) => all.filter((x) => x.state === "running"))} />
+    </div>
+  );
+}

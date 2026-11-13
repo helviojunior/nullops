@@ -1,0 +1,84 @@
+import { createContext, useContext, useEffect, useState } from "react";
+import { createBrowserRouter, Navigate, Outlet, RouterProvider } from "react-router-dom";
+import { AuthProvider } from "contexts/AuthContext";
+import { DialogProvider } from "contexts/DialogContext";
+import { ToastProvider } from "contexts/ToastContext";
+import { I18nProvider } from "i18n";
+import AppLayout from "components/layout/AppLayout";
+import Login from "pages/Login";
+import Browser from "pages/Browser";
+import Editor from "pages/Editor";
+
+const THEME_KEY = "fmweb.theme";
+
+// The router is created once; the theme reaches routes through this context.
+const ThemeContext = createContext({ darkMode: true, setDarkMode: () => {} });
+
+function initialDark() {
+  try {
+    const v = localStorage.getItem(THEME_KEY);
+    if (v) return v === "dark";
+  } catch {
+    /* storage unavailable */
+  }
+  return true;
+}
+
+function Root() {
+  return (
+    <I18nProvider>
+      <ToastProvider>
+        <AuthProvider>
+          <DialogProvider>
+            <Outlet />
+          </DialogProvider>
+        </AuthProvider>
+      </ToastProvider>
+    </I18nProvider>
+  );
+}
+
+function LoginRoute() {
+  return <Login {...useContext(ThemeContext)} />;
+}
+
+function LayoutRoute() {
+  return <AppLayout {...useContext(ThemeContext)} />;
+}
+
+const router = createBrowserRouter([
+  {
+    element: <Root />,
+    children: [
+      { path: "/login", element: <LoginRoute /> },
+      {
+        element: <LayoutRoute />,
+        children: [
+          { path: "/files/*", element: <Browser /> },
+          // Object detail (the editor) always gets its own route, never a modal.
+          { path: "/edit/*", element: <Editor /> },
+        ],
+      },
+      { path: "*", element: <Navigate to="/files" replace /> },
+    ],
+  },
+]);
+
+export default function App() {
+  const [darkMode, setDarkMode] = useState(initialDark);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle("dark", darkMode);
+    try {
+      localStorage.setItem(THEME_KEY, darkMode ? "dark" : "light");
+    } catch {
+      /* ignore */
+    }
+  }, [darkMode]);
+
+  return (
+    <ThemeContext.Provider value={{ darkMode, setDarkMode }}>
+      <RouterProvider router={router} />
+    </ThemeContext.Provider>
+  );
+}

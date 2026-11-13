@@ -1,0 +1,94 @@
+import { Navigate, Outlet } from "react-router-dom";
+import { FolderLock, LogOut, Moon, Sun, Languages, ShieldCheck, Loader2 } from "lucide-react";
+import { useAuth } from "contexts/AuthContext";
+import { useI18n, LANGUAGE_OPTIONS } from "i18n";
+import { Button } from "components/ui/button";
+
+export function LanguageSelect({ className = "" }) {
+  const { t, lang, setLanguage } = useI18n();
+  return (
+    <label className={`inline-flex items-center gap-1.5 text-sm text-muted-foreground ${className}`}>
+      <Languages className="h-4 w-4" />
+      <span className="sr-only">{t("common.language")}</span>
+      <select
+        value={lang}
+        onChange={(e) => setLanguage(e.target.value)}
+        className="bg-transparent text-foreground text-sm outline-none cursor-pointer"
+      >
+        {LANGUAGE_OPTIONS.map((o) => (
+          <option key={o.value} value={o.value} className="bg-card">
+            {o.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+export function ThemeToggle({ darkMode, setDarkMode }) {
+  const { t } = useI18n();
+  return (
+    <button
+      type="button"
+      onClick={() => setDarkMode(!darkMode)}
+      className="p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+      title={t("common.theme")}
+      aria-label={t("common.theme")}
+    >
+      {darkMode ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+    </button>
+  );
+}
+
+export default function AppLayout({ darkMode, setDarkMode }) {
+  const { user, status, logout } = useAuth();
+  const { t, tf } = useI18n();
+
+  if (!user) {
+    if (status === "connecting") {
+      return (
+        <div className="flex h-screen items-center justify-center text-muted-foreground">
+          <Loader2 className="h-6 w-6 animate-spin" />
+        </div>
+      );
+    }
+    return <Navigate to="/login" replace />;
+  }
+
+  return (
+    <div className="flex h-screen flex-col">
+      <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border bg-card px-4">
+        <FolderLock className="h-5 w-5 text-primary" />
+        <span className="font-semibold truncate">{user.title || t("app.name")}</span>
+        {user.readonly && (
+          <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-xs text-amber-500">
+            {t("nav.readonly")}
+          </span>
+        )}
+        <div className="ml-auto flex items-center gap-2">
+          <LanguageSelect className="hidden sm:inline-flex" />
+          <ThemeToggle darkMode={darkMode} setDarkMode={setDarkMode} />
+          {user.auth && (
+            <>
+              <span className="hidden md:inline text-sm text-muted-foreground">{user.username}</span>
+              <Button variant="ghost" size="sm" onClick={logout} title={t("nav.logout")}>
+                <LogOut className="h-4 w-4" />
+                <span className="hidden sm:inline">{t("nav.logout")}</span>
+              </Button>
+            </>
+          )}
+        </div>
+      </header>
+
+      <main className="flex min-h-0 flex-1 flex-col">
+        <Outlet />
+      </main>
+
+      <footer className="flex h-8 shrink-0 items-center gap-3 border-t border-border bg-card px-4 text-xs text-muted-foreground">
+        <ShieldCheck className="h-3.5 w-3.5 text-emerald-500" />
+        <span className="truncate">{t("app.secure")}</span>
+        <span className="ml-auto">{tf("footer.version", { v: user.version })}</span>
+      </footer>
+    </div>
+  );
+}
