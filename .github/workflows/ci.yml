@@ -33,7 +33,7 @@ jobs:
         fetch-depth: 0  # `git rev-parse` in the Makefile and full history for version info
 
     - name: Set up Node
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@v7
       with:
         node-version: '22'
         cache: 'npm'
@@ -123,7 +123,7 @@ jobs:
         fetch-depth: 0  # trufflehog scans the commit range
 
     - name: Set up Node
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@v7
       with:
         node-version: '22'
         cache: 'npm'
