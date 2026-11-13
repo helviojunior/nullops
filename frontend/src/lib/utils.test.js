@@ -44,6 +44,7 @@ describe("formatting and types", () => {
 
   it("maps MIME types to preview kinds", () => {
     expect(previewKind("image/png", false)).toBe("image");
+    expect(previewKind("image/svg+xml", true)).toBe("image");
     expect(previewKind("application/pdf", false)).toBe("pdf");
     expect(previewKind("text/plain; charset=utf-8", true)).toBe("text");
     expect(previewKind("application/zip", false)).toBe("other");

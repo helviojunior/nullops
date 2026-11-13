@@ -56,11 +56,18 @@ func DetectMime(buf []byte) (mime string, isText bool) {
 			return mime, ok
 		}
 		if looksText(buf) {
+			if looksSVG(buf) {
+				// net/http sniffs SVG as text/xml: it is an image (still editable)
+				return "image/svg+xml", true
+			}
 			return mime, true
 		}
 		// binary bytes after the first 512: not really text
 		return "application/octet-stream", false
 	case base == "application/octet-stream" && looksText(buf):
+		if looksSVG(buf) {
+			return "image/svg+xml", true
+		}
 		return "text/plain; charset=utf-8", true
 	}
 	return mime, false
@@ -99,4 +106,21 @@ func evenLen(b []byte) []byte {
 		return b[:len(b)-1]
 	}
 	return b
+}
+
+// looksSVG reports whether a text buffer is an SVG document: it starts with
+// an XML declaration, comment, doctype or the <svg> element itself, and has
+// an <svg element in the inspected bytes.
+func looksSVG(buf []byte) bool {
+	b := bytes.TrimPrefix(buf, []byte{0xef, 0xbb, 0xbf})
+	b = bytes.ToLower(bytes.TrimSpace(b))
+	if !bytes.Contains(b, []byte("<svg")) {
+		return false
+	}
+	for _, p := range []string{"<?xml", "<svg", "<!--", "<!doctype svg"} {
+		if bytes.HasPrefix(b, []byte(p)) {
+			return true
+		}
+	}
+	return false
 }
