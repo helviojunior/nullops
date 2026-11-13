@@ -25,7 +25,7 @@ const Lazy = ({ children }) => (
 );
 import Account from "pages/Account";
 
-const THEME_KEY = "fmweb.theme";
+const THEME_KEY = "nullops.theme";
 
 // The router is created once; the theme reaches routes through this context.
 const ThemeContext = createContext({ darkMode: true, setDarkMode: () => {} });

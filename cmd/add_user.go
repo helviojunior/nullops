@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/helviojunior/fmweb/internal/ascii"
-	"github.com/helviojunior/fmweb/pkg/auth"
-	"github.com/helviojunior/fmweb/pkg/log"
+	"github.com/helviojunior/nullops/internal/ascii"
+	"github.com/helviojunior/nullops/pkg/auth"
+	"github.com/helviojunior/nullops/pkg/log"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )
@@ -35,12 +35,12 @@ in the web interface. With --update, the password is kept unless -p,
 --generate or --set-password is given. A running server picks up the change
 within a few seconds.`),
 	Example: `
-   - fmweb add-user -u admin
-   - fmweb add-user -u bob -p 'S3cret!' --readonly
-   - fmweb add-user -u bob --mfa
-   - fmweb add-user -u bob --update --mfa
-   - fmweb add-user -u bob --update --no-mfa
-   - fmweb add-user -u bob --update --set-password`,
+   - nullops add-user -u admin
+   - nullops add-user -u bob -p 'S3cret!' --readonly
+   - nullops add-user -u bob --mfa
+   - nullops add-user -u bob --update --mfa
+   - nullops add-user -u bob --update --no-mfa
+   - nullops add-user -u bob --update --set-password`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if err := auth.ValidateUsername(userOpts.Username); err != nil {
 			return err
@@ -125,7 +125,7 @@ within a few seconds.`),
 }
 
 func printMFAEnrollment(user, secret string) {
-	uri := auth.TOTPURI("Web File Manager", user, secret)
+	uri := auth.TOTPURI("NullOps - Web Resource Manager", user, secret)
 	fmt.Println()
 	fmt.Println("  Scan this QR code with an authenticator app (Google Authenticator, Authy, 1Password, …):")
 	fmt.Println()

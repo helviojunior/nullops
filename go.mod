@@ -1,4 +1,4 @@
-module github.com/helviojunior/fmweb
+module github.com/helviojunior/nullops
 
 go 1.26.0
 

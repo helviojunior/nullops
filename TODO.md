@@ -1,4 +1,4 @@
-# TODO — Web File Manager (`fmweb`)
+# TODO — NullOps - Web Resource Manager (`nullops`)
 
 Requirements, what is already implemented and the roadmap of the Go port.
 The original Python implementation is preserved in the `python` branch.
@@ -19,8 +19,8 @@ Legend: `[x]` done · `[ ]` pending · `[~]` partial
 - [x] Three subcommands: `create-tls`, `add-user`, `web` (plus `version`)
 - [x] Build order: front-end first (html/css/js/images), then `go build`
 - [x] Pure-Go web server (`net/http`, no external web framework)
-- [x] User files (TLS cert/key, users) stored in `./fmweb` (`--data-dir` to change it)
-- [x] Binary name `fmweb`, project name "Web File Manager"
+- [x] User files (TLS cert/key, users) stored in `~/.nullops` in the user home (`%USERPROFILE%\.nullops` on Windows; `--data-dir` to change it)
+- [x] Binary name `nullops`, project name "NullOps - Web Resource Manager"
 - [x] Makefile with local build and cross-compile (Windows / Linux / macOS; amd64 / 386 / arm64)
 - [x] Front-end build through Docker (`FRONTEND_BUILDER=local` uses the host's npm)
 
@@ -28,7 +28,7 @@ Legend: `[x]` done · `[ ]` pending · `[~]` partial
 
 ### Backend / security
 - [x] Encrypted `/api` channel: ECDH P-256 handshake → HKDF-SHA256 → AES-256-GCM, one key per session
-- [x] Sessions persisted in `./fmweb/sessions.db` (pure-Go SQLite), valid for 12h (`--session-ttl`), surviving
+- [x] Sessions persisted in `~/.nullops/sessions.db` (pure-Go SQLite), valid for 12h (`--session-ttl`), surviving
       page reloads and server restarts: id stored only as SHA-256, AES key wrapped with a key derived from the id;
       browser keeps a non-extractable `CryptoKey` in IndexedDB; logout deletes the session
 - [x] Account re-checked on every request (removed user loses the session; read-only flag changes apply)
@@ -72,7 +72,7 @@ Legend: `[x]` done · `[ ]` pending · `[~]` partial
 - [x] Rename, delete (single and batch), copy / move (batch), `chmod`
 - [x] Encrypted chunked upload (button and drag-and-drop, multiple files, progress), **resumable**: a dropped
       connection is retried with backoff, and uploading the same file again continues from the hidden
-      `.fmweb-upload-<id>.part`; per-file size limit `--max-upload 2G`
+      `.nullops-upload-<id>.part`; per-file size limit `--max-upload 2G`
 - [x] Encrypted streamed download with progress
 - [x] Download a folder or a multiple selection as a zip built on the fly (streamed, no temporary file)
 - [x] Copy / move with a folder picker (tree), and drag and drop of files onto folders in the table or in the
@@ -137,4 +137,4 @@ Legend: `[x]` done · `[ ]` pending · `[~]` partial
 ### Not verified yet
 - [ ] A real Let's Encrypt issuance with `create-tls --acme` (needs a public domain and port 80)
 - [ ] The GitHub Actions workflows on GitHub (validated as YAML only; the repo has no remote yet)
-- [ ] Clean-up of abandoned `.fmweb-upload-*.part` files (today they stay until the same file is uploaded again)
+- [ ] Clean-up of abandoned `.nullops-upload-*.part` files (today they stay until the same file is uploaded again)

@@ -32,7 +32,7 @@ import (
 const (
 	saltLen  = 32
 	nonceLen = 12
-	info     = "fmweb/assets/v1"
+	info     = "nullops/assets/v1"
 )
 
 var (

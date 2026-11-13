@@ -14,8 +14,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/helviojunior/fmweb/pkg/crypto"
-	"github.com/helviojunior/fmweb/pkg/log"
+	"github.com/helviojunior/nullops/pkg/crypto"
+	"github.com/helviojunior/nullops/pkg/log"
 )
 
 // PreAuthTTL is the lifetime of a handshake that was not followed by a login.
@@ -155,7 +155,7 @@ func newID() ([]byte, string, error) {
 
 // HashID is the identifier stored on disk: the session id itself never is.
 func HashID(id string) string {
-	sum := sha256.Sum256([]byte("fmweb-session:" + id))
+	sum := sha256.Sum256([]byte("nullops-session:" + id))
 	return hex.EncodeToString(sum[:])
 }
 
@@ -300,7 +300,7 @@ func (m *Manager) load(id string, now time.Time) *Session {
 }
 
 // revocationCheck is how often a cached session is checked against the store
-// (`fmweb sessions revoke` deletes rows while the server runs).
+// (`nullops sessions revoke` deletes rows while the server runs).
 var revocationCheck = 5 * time.Second
 
 // SetRevocationCheck changes how often cached sessions are re-validated (tests).

@@ -29,7 +29,7 @@ export default defineConfig({
     include: ["src/**/*.test.js"],
   },
   server: {
-    // `npm run dev` proxies the API to a running `fmweb web --no-tls`.
+    // `npm run dev` proxies the API to a running `nullops web --no-tls`.
     proxy: { "/api": "http://127.0.0.1:8181" },
   },
 });

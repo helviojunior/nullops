@@ -7,7 +7,7 @@
 //	     point, base64url) to POST /api/handshake.
 //	  2. Server generates its own ephemeral key pair, computes the ECDH shared
 //	     secret and derives an AES-256-GCM key with HKDF-SHA256
-//	     (salt = random session id bytes, info = "fmweb/aesgcm/v1").
+//	     (salt = random session id bytes, info = "nullops/aesgcm/v1").
 //	  3. Server returns {session_id, server_pub}. The AES key never travels.
 //
 //	Envelope (both directions): {"iv": b64url(12 bytes), "data": b64url(ct||tag)}
@@ -28,7 +28,7 @@ import (
 )
 
 // HKDFInfo is the HKDF context string shared with the browser.
-const HKDFInfo = "fmweb/aesgcm/v1"
+const HKDFInfo = "nullops/aesgcm/v1"
 
 const ivLen = 12
 

@@ -3,7 +3,7 @@ import { LOCALES } from "./locales";
 
 export const SUPPORTED = ["en", "pt-br"];
 export const FALLBACK = "en";
-const STORAGE_KEY = "fmweb.lang";
+const STORAGE_KEY = "nullops.lang";
 
 export const LANGUAGE_OPTIONS = [
   { value: "en", label: "English" },

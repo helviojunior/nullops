@@ -7,7 +7,7 @@ import { errorText } from "lib/errors";
 import { baseName, parentPath } from "lib/utils";
 
 // Drag-and-drop payload type for file rows.
-export const DND_TYPE = "application/x-fmweb-paths";
+export const DND_TYPE = "application/x-nullops-paths";
 
 export function setDragPaths(e, paths) {
   e.dataTransfer.setData(DND_TYPE, JSON.stringify(paths));
@@ -33,7 +33,7 @@ export function canDrop(paths, dest) {
 
 // Notifies listings that the filesystem changed (Browser reloads).
 export function notifyChanged() {
-  window.dispatchEvent(new CustomEvent("fmweb:changed"));
+  window.dispatchEvent(new CustomEvent("nullops:changed"));
 }
 
 /** useTransfer() -> (paths, dest, copy) => Promise<boolean>: copy/move + refresh. */

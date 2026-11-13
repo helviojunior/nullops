@@ -1,10 +1,10 @@
 // Transport encryption for the /api channel (browser side).
 // Mirrors pkg/crypto in the Go server:
-//   ECDH P-256 -> HKDF-SHA256(salt = session id bytes, info = "fmweb/aesgcm/v1")
+//   ECDH P-256 -> HKDF-SHA256(salt = session id bytes, info = "nullops/aesgcm/v1")
 //   -> AES-256-GCM.
 // The AES key never leaves this CryptoKey object (non-extractable, memory only).
 
-const HKDF_INFO = new TextEncoder().encode("fmweb/aesgcm/v1");
+const HKDF_INFO = new TextEncoder().encode("nullops/aesgcm/v1");
 
 export function b64urlEncode(bytes) {
   const arr = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);

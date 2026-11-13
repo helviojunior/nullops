@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/helviojunior/fmweb/internal/version"
-	"github.com/helviojunior/fmweb/pkg/fileops"
+	"github.com/helviojunior/nullops/internal/version"
+	"github.com/helviojunior/nullops/pkg/fileops"
 )
 
 // Error is an application-level error returned inside the encrypted body.

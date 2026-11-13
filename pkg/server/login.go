@@ -7,16 +7,16 @@ import (
 	"strings"
 	"time"
 
-	"github.com/helviojunior/fmweb/pkg/auth"
-	"github.com/helviojunior/fmweb/pkg/log"
-	"github.com/helviojunior/fmweb/pkg/session"
+	"github.com/helviojunior/nullops/pkg/auth"
+	"github.com/helviojunior/nullops/pkg/log"
+	"github.com/helviojunior/nullops/pkg/session"
 )
 
 // loginTTL is how long a started login may take (user -> [MFA] -> password).
 const loginTTL = 5 * time.Minute
 
 // mfaIssuer is shown in authenticator apps.
-const mfaIssuer = "Web File Manager"
+const mfaIssuer = "NullOps - Web Resource Manager"
 
 // loginStep implements the multi-step login over the encrypted channel:
 //

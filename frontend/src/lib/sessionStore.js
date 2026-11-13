@@ -4,7 +4,7 @@
 // browser can use it to encrypt/decrypt, but no script can read its bytes.
 // The record is removed on logout or when the server rejects the session.
 
-const DB = "fmweb";
+const DB = "nullops";
 const STORE = "session";
 const KEY = "current";
 

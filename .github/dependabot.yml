@@ -1,4 +1,4 @@
-# Dependabot configuration for fmweb (Web File Manager)
+# Dependabot configuration for nullops (NullOps - Web Resource Manager)
 version: 2
 updates:
   # Go modules

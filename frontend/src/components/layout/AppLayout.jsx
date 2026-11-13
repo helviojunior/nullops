@@ -56,7 +56,7 @@ export function ThemeToggle({ darkMode, setDarkMode }) {
   );
 }
 
-const PANEL_KEY = "fmweb.tree";
+const PANEL_KEY = "nullops.tree";
 
 function loadPanel() {
   try {

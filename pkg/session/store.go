@@ -192,7 +192,7 @@ func b2i(b bool) int {
 
 // ---- key wrapping ---------------------------------------------------------
 
-const wrapInfo = "fmweb/session-wrap/v1"
+const wrapInfo = "nullops/session-wrap/v1"
 
 func kek(id string) (cipher.AEAD, error) {
 	raw, err := hex.DecodeString(id)

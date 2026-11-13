@@ -1,11 +1,11 @@
-# Web File Manager (`fmweb`)
+# NullOps - Web Resource Manager (`nullops`)
 
-A stand-alone, **encrypted** web file manager in a single executable. The web
+A stand-alone, **encrypted** web resource manager in a single executable. The web
 interface (HTML/JS/CSS) is embedded in the binary in obfuscated form and served
-straight from memory: download one file (`fmweb.exe`, for example) and run it.
+straight from memory: download one file (`nullops.exe`, for example) and run it.
 
 ```bash
-fmweb web -r /data -b 0.0.0.0 -p 8443
+nullops web -r /data -b 0.0.0.0 -p 8443
 ```
 
 - **Single binary**: front-end embedded (zip + AES-256-GCM), never extracted to disk.
@@ -20,13 +20,13 @@ fmweb web -r /data -b 0.0.0.0 -p 8443
 
 | Command | What it does |
 | --- | --- |
-| `fmweb create-tls` | Creates a self-signed certificate (`--host`, `--days`, `--force`), imports one (`--cert`, `--key`) or gets one from Let's Encrypt (`--acme --domain files.example.com [--acme-email] [--acme-staging]`) |
-| `fmweb add-user`   | Adds or updates a user (`-u`, `-p` / prompt / `--generate`, `--readonly`, `--update`, `--set-password`, `--mfa` / `--no-mfa`) |
-| `fmweb list-users` | Lists users (access, MFA, dates) |
-| `fmweb del-user`   | Deletes a user and revokes its sessions |
-| `fmweb sessions`   | Lists active sessions; `sessions revoke <id-prefix> \| --user <name> \| --all` |
-| `fmweb web`        | Starts the server (`-r` root, `-b` bind, `-p` port, `--readonly`, `--show-hidden`, `--exclude`, `--allow-ext`, `--max-upload`, `--audit-log`, `--trusted-proxy`, `--session-ttl`, `--no-tls`, `-y`, `--no-auth`) |
-| `fmweb version`    | Version and build information |
+| `nullops create-tls` | Creates a self-signed certificate (`--host`, `--days`, `--force`), imports one (`--cert`, `--key`) or gets one from Let's Encrypt (`--acme --domain files.example.com [--acme-email] [--acme-staging]`) |
+| `nullops add-user`   | Adds or updates a user (`-u`, `-p` / prompt / `--generate`, `--readonly`, `--update`, `--set-password`, `--mfa` / `--no-mfa`) |
+| `nullops list-users` | Lists users (access, MFA, dates) |
+| `nullops del-user`   | Deletes a user and revokes its sessions |
+| `nullops sessions`   | Lists active sessions; `sessions revoke <id-prefix> \| --user <name> \| --all` |
+| `nullops web`        | Starts the server (`-r` root, `-b` bind, `-p` port, `--readonly`, `--show-hidden`, `--exclude`, `--allow-ext`, `--max-upload`, `--audit-log`, `--trusted-proxy`, `--session-ttl`, `--no-tls`, `-y`, `--no-auth`) |
+| `nullops version`    | Version and build information |
 
 Changes to users (`add-user`, `del-user`) and revoked sessions take effect on a running server within seconds.
 
@@ -35,7 +35,7 @@ Changes to users (`add-user`, `del-user`) and revoked sessions take effect on a 
 Sign-in happens in steps, over the encrypted channel: **user → [MFA code] → password**.
 
 - MFA (TOTP, any authenticator app) is **optional**. A user enables it in the web UI (user menu → *Account
-  security*: scan the QR code, confirm with a code) or the admin runs `fmweb add-user -u bob --update --mfa`,
+  security*: scan the QR code, confirm with a code) or the admin runs `nullops add-user -u bob --update --mfa`,
   which prints the QR code in the terminal. Disabling it in the UI requires a current code.
 - An unknown username always gets the MFA step, as if it existed with MFA, and the attempt is logged
   (`login attempt with unknown user`). Its code is always rejected.
@@ -43,7 +43,7 @@ Sign-in happens in steps, over the encrypted channel: **user → [MFA code] → 
   which accounts exist completely, enable MFA for everyone.
 - Five failures (code or password) from the same IP lock it out for five minutes; a code cannot be reused.
 
-Global flags: `--data-dir` (default `./fmweb`), `-v`/`-vv` verbosity, `-D` (= `-vv`), `-q` quiet.
+Global flags: `--data-dir` (default `~/.nullops`), `-v`/`-vv` verbosity, `-D` (= `-vv`), `-q` quiet.
 
 | Level | Flag | What is shown |
 | --- | --- | --- |
@@ -100,7 +100,7 @@ After login the session is valid for **12 hours** (`--session-ttl`, in
 seconds), across page reloads, new tabs and server restarts. Signing out ends
 it immediately.
 
-- **Server**: `fmweb/sessions.db` (SQLite, 0600). The session id is never
+- **Server**: `~/.nullops/sessions.db` (SQLite, 0600). The session id is never
   stored; rows are keyed by SHA-256(id), and the AES key is wrapped with
   AES-256-GCM under a key derived from the id. A copy of the database alone
   does not reveal session keys or allow reusing a session.
@@ -113,10 +113,10 @@ it immediately.
 - A session created with TLS is not accepted by a `--no-tls` server, and the
   other way around.
 
-### User data (`./fmweb`)
+### User data (`~/.nullops`)
 
 ```
-fmweb/
+~/.nullops/            # %USERPROFILE%\.nullops on Windows
 ├── tls/cert.pem    # certificate
 ├── tls/key.pem     # private key (0600)
 ├── users.json      # users (scrypt hashes, 0600)
@@ -125,10 +125,6 @@ fmweb/
 
 On first run with no users, `web` creates `admin` with a random password and
 prints it **only once**. The scrypt format is the same as the Python version's.
-
-> **Note:** on Linux/macOS a binary named `fmweb` and the `./fmweb` directory
-> cannot coexist in the same folder. Keep the binary under the name it was
-> built with (`fmweb_linux_amd64`, …), put it somewhere else, or use `--data-dir`.
 
 ## Build
 
@@ -154,12 +150,12 @@ Pipeline:
 CI and releases run on GitHub Actions (`.github/workflows`): a published release builds every platform and
 attaches the binaries and `SHA256SUMS`.
 
-Binaries go to `./build/fmweb_<os>_<arch>[.exe]`. `VER=1.2.3 make all` sets the version.
+Binaries go to `./build/nullops_<os>_<arch>[.exe]`. `VER=1.2.3 make all` sets the version.
 
 ### Front-end development
 
 ```bash
-fmweb web --no-tls -y -p 8181       # API on http://127.0.0.1:8181 (no encryption)
+nullops web --no-tls -y -p 8181       # API on http://127.0.0.1:8181 (no encryption)
 cd frontend && npm install && npm run dev   # Vite with a proxy to /api
 ```
 
@@ -175,7 +171,7 @@ pkg/
   assets/bundle/     # obfuscated bundle format (pack/open)
   auth/              # scrypt + users.json
   crypto/            # ECDH/HKDF/AES-GCM, envelopes and download frames
-  datadir/           # ./fmweb
+  datadir/           # ~/.nullops
   fileops/           # root-confined filesystem operations
   server/            # net/http, /api routes, login rate limit
   session/           # sessions: memory + SQLite (wrapped keys)

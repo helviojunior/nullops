@@ -13,8 +13,8 @@ import (
 // upload id (derived from name, size and modification time), so an upload
 // interrupted by a dropped connection can be resumed from where it stopped:
 //
-//	.fmweb-upload-<id>.part  (never listed, renamed to the final name at the end)
-const partPrefix, partSuffix = ".fmweb-upload-", ".part"
+//	.nullops-upload-<id>.part  (never listed, renamed to the final name at the end)
+const partPrefix, partSuffix = ".nullops-upload-", ".part"
 
 var uploadIDRe = regexp.MustCompile(`^[0-9a-f]{16,64}$`)
 

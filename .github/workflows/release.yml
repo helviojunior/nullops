@@ -61,7 +61,7 @@ jobs:
       run: VER="$VER" make all FRONTEND_BUILDER=local
 
     - name: Smoke test linux/amd64 binary
-      run: ./build/fmweb_linux_amd64 version
+      run: ./build/nullops_linux_amd64 version
 
     - name: Generate SHA256SUMS
       working-directory: build
@@ -73,7 +73,7 @@ jobs:
     - name: Upload build artifact
       uses: actions/upload-artifact@v4
       with:
-        name: fmweb-${{ steps.vars.outputs.version }}
+        name: nullops-${{ steps.vars.outputs.version }}
         path: |
           build/*
           !build/.*

@@ -23,13 +23,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/helviojunior/fmweb/pkg/api"
-	"github.com/helviojunior/fmweb/pkg/assets"
-	"github.com/helviojunior/fmweb/pkg/auth"
-	"github.com/helviojunior/fmweb/pkg/crypto"
-	"github.com/helviojunior/fmweb/pkg/fileops"
-	"github.com/helviojunior/fmweb/pkg/log"
-	"github.com/helviojunior/fmweb/pkg/session"
+	"github.com/helviojunior/nullops/pkg/api"
+	"github.com/helviojunior/nullops/pkg/assets"
+	"github.com/helviojunior/nullops/pkg/auth"
+	"github.com/helviojunior/nullops/pkg/crypto"
+	"github.com/helviojunior/nullops/pkg/fileops"
+	"github.com/helviojunior/nullops/pkg/log"
+	"github.com/helviojunior/nullops/pkg/session"
 )
 
 const (
@@ -147,7 +147,7 @@ func securityHeaders(next http.Handler) http.Handler {
 			// blob: frames: PDF preview of a decrypted download
 			"frame-src 'self' blob:; "+
 			"base-uri 'none'; frame-ancestors 'none'; form-action 'self'")
-		h.Set("Server", "fmweb")
+		h.Set("Server", "nullops")
 		next.ServeHTTP(w, r)
 	})
 }

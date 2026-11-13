@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/helviojunior/fmweb/internal/ascii"
-	"github.com/helviojunior/fmweb/pkg/log"
-	"github.com/helviojunior/fmweb/pkg/tlsutil"
+	"github.com/helviojunior/nullops/internal/ascii"
+	"github.com/helviojunior/nullops/pkg/log"
+	"github.com/helviojunior/nullops/pkg/tlsutil"
 	"github.com/spf13/cobra"
 )
 
@@ -45,12 +45,12 @@ with --force (e.g. from cron). Try --acme-staging first to avoid rate limits.
 HTTPS matters: the encrypted /api channel relies on WebCrypto, which browsers
 only expose on https:// pages (or on http://localhost).`),
 	Example: `
-   - fmweb create-tls
-   - fmweb create-tls --host files.corp.local --host 10.0.0.5 --days 365
-   - fmweb create-tls --cert server.crt --key server.key --force
-   - fmweb create-tls --acme --domain files.example.com --acme-email admin@example.com
-   - fmweb create-tls --acme --domain files.example.com --domain www.files.example.com --acme-staging
-   - fmweb create-tls --acme --domain files.example.com --acme-http-addr :8080 --force   # renew; port 80 forwarded to 8080`,
+   - nullops create-tls
+   - nullops create-tls --host files.corp.local --host 10.0.0.5 --days 365
+   - nullops create-tls --cert server.crt --key server.key --force
+   - nullops create-tls --acme --domain files.example.com --acme-email admin@example.com
+   - nullops create-tls --acme --domain files.example.com --domain www.files.example.com --acme-staging
+   - nullops create-tls --acme --domain files.example.com --acme-http-addr :8080 --force   # renew; port 80 forwarded to 8080`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		d, err := dataDir()
 		if err != nil {

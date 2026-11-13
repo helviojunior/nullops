@@ -22,7 +22,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/helviojunior/fmweb/pkg/log"
+	"github.com/helviojunior/nullops/pkg/log"
 	"golang.org/x/crypto/acme"
 )
 
@@ -114,7 +114,7 @@ func ObtainACME(ctx context.Context, opt ACMEOptions) error {
 	if err != nil {
 		return err
 	}
-	client := &acme.Client{Key: accountKey, DirectoryURL: opt.DirectoryURL, UserAgent: "fmweb"}
+	client := &acme.Client{Key: accountKey, DirectoryURL: opt.DirectoryURL, UserAgent: "nullops"}
 
 	// Bind the challenge port first so a busy/privileged port fails fast,
 	// before anything is requested from the CA.

@@ -1,7 +1,7 @@
 // Translation catalogs. EN is the default and the fallback: every key exists in EN.
 export const LOCALES = {
   en: {
-    "app.name": "Web File Manager",
+    "app.name": "NullOps - Web Resource Manager",
     "app.secure": "ECDH P-256 + AES-256-GCM · one key per session",
     "app.plain": "Payload encryption DISABLED (--no-tls) · traffic in clear text",
 
@@ -27,7 +27,7 @@ export const LOCALES = {
     "login.throttled": "Too many attempts. Try again in {s} seconds.",
     "login.connecting": "Establishing encrypted channel…",
     "login.connectErrorTitle": "Service unavailable",
-    "login.connectErrorHint": "Could not establish the encrypted channel with the server. Check that fmweb is running and try again.",
+    "login.connectErrorHint": "Could not establish the encrypted channel with the server. Check that nullops is running and try again.",
     "login.insecureTitle": "Secure context required",
     "login.insecureHint": "This page must be opened over https:// (or http://localhost) because the browser only exposes WebCrypto in a secure context.",
     "login.expired": "Your session expired. Please sign in again.",
@@ -143,7 +143,7 @@ export const LOCALES = {
     "editor.readonly": "Read-only: changes cannot be saved.",
     "editor.lines": "{n} lines",
 
-    "footer.version": "fmweb {v}",
+    "footer.version": "nullops {v}",
     "viewer.prev": "Previous (←)",
     "viewer.next": "Next (→)",
     "viewer.position": "{i} of {n}",
@@ -175,7 +175,7 @@ export const LOCALES = {
   },
 
   "pt-br": {
-    "app.name": "Web File Manager",
+    "app.name": "NullOps - Web Resource Manager",
     "app.secure": "ECDH P-256 + AES-256-GCM · uma chave por sessão",
     "app.plain": "Criptografia de payload DESATIVADA (--no-tls) · tráfego em texto claro",
 
@@ -201,7 +201,7 @@ export const LOCALES = {
     "login.throttled": "Muitas tentativas. Tente novamente em {s} segundos.",
     "login.connecting": "Estabelecendo canal criptografado…",
     "login.connectErrorTitle": "Serviço indisponível",
-    "login.connectErrorHint": "Não foi possível estabelecer o canal criptografado com o servidor. Verifique se o fmweb está em execução e tente novamente.",
+    "login.connectErrorHint": "Não foi possível estabelecer o canal criptografado com o servidor. Verifique se o nullops está em execução e tente novamente.",
     "login.insecureTitle": "Contexto seguro necessário",
     "login.insecureHint": "Esta página precisa ser aberta via https:// (ou http://localhost), pois o navegador só disponibiliza o WebCrypto em contexto seguro.",
     "login.expired": "Sua sessão expirou. Entre novamente.",
@@ -317,7 +317,7 @@ export const LOCALES = {
     "editor.readonly": "Somente leitura: as alterações não podem ser salvas.",
     "editor.lines": "{n} linhas",
 
-    "footer.version": "fmweb {v}",
+    "footer.version": "nullops {v}",
     "viewer.prev": "Anterior (←)",
     "viewer.next": "Próximo (→)",
     "viewer.position": "{i} de {n}",

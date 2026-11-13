@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/helviojunior/fmweb/internal/ascii"
-	"github.com/helviojunior/fmweb/pkg/datadir"
-	"github.com/helviojunior/fmweb/pkg/log"
+	"github.com/helviojunior/nullops/internal/ascii"
+	"github.com/helviojunior/nullops/pkg/datadir"
+	"github.com/helviojunior/nullops/pkg/log"
 	"github.com/spf13/cobra"
 )
 
@@ -18,21 +18,21 @@ var globalOpts = struct {
 }{}
 
 var rootCmd = &cobra.Command{
-	Use:   "fmweb",
-	Short: "fmweb is a stand-alone, encrypted Web File Manager",
+	Use:   "nullops",
+	Short: "nullops (NullOps - Web Resource Manager) is a stand-alone, encrypted web resource manager",
 	Long:  ascii.Logo(),
 	Example: `
-   - fmweb create-tls
-   - fmweb create-tls --host files.corp.local --host 10.0.0.5
-   - fmweb create-tls --cert /etc/ssl/my.crt --key /etc/ssl/my.key
+   - nullops create-tls
+   - nullops create-tls --host files.corp.local --host 10.0.0.5
+   - nullops create-tls --cert /etc/ssl/my.crt --key /etc/ssl/my.key
 
-   - fmweb add-user -u admin
-   - fmweb add-user -u bob -p 'S3cret!' --readonly
-   - fmweb add-user -u bob --update
+   - nullops add-user -u admin
+   - nullops add-user -u bob -p 'S3cret!' --readonly
+   - nullops add-user -u bob --update
 
-   - fmweb web
-   - fmweb web -r /data -b 0.0.0.0 -p 8443
-   - fmweb web -r /srv/share --readonly --show-hidden`,
+   - nullops web
+   - nullops web -r /data -b 0.0.0.0 -p 8443
+   - nullops web -r /srv/share --readonly --show-hidden`,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		if cmd.CalledAs() != "version" && !globalOpts.Silence {
 			fmt.Println(ascii.Logo())

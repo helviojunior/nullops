@@ -4,19 +4,20 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/helviojunior/fmweb/internal/version"
+	"github.com/helviojunior/nullops/internal/version"
 )
 
-// Logo returns the fmweb ascii logo
+// Logo returns the nullops ascii logo
 func Logo() string {
 	txt := `
-{G}    ____                {O}        __  
-{G}   / __/___ ___ {O}_      _____  / /_ 
-{G}  / /_/ __ ` + "`" + `__ \{O} | /| / / _ \/ __ \
-{G} / __/ / / / / /{O} |/ |/ /  __/ /_/ /
-{G}/_/ /_/ /_/ /_/{O}|__/|__/\___/_.___/ {B}
+{G}                ____{O}                
+{G}   ____  __  __/ / /{O}___  ____  _____
+{G}  / __ \/ / / / / /{O} __ \/ __ \/ ___/
+{G} / / / / /_/ / / /{O} /_/ / /_/ (__  ) 
+{G}/_/ /_/\__,_/_/_/{O}\____/ .___/____/  
+{G}                 {O}    /_/  {B}
 `
-	v := fmt.Sprintf("Web File Manager - Ver: %s-%s", version.Version, version.GitHash)
+	v := fmt.Sprintf("NullOps - Web Resource Manager | Ver: %s-%s", version.Version, version.GitHash)
 	r := 38 - len(v)
 	if r < 0 {
 		r = 0

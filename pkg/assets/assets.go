@@ -17,7 +17,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/helviojunior/fmweb/pkg/assets/bundle"
+	"github.com/helviojunior/nullops/pkg/assets/bundle"
 )
 
 //go:embed bundle.bin

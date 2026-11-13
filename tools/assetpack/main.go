@@ -9,7 +9,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/helviojunior/fmweb/pkg/assets/bundle"
+	"github.com/helviojunior/nullops/pkg/assets/bundle"
 )
 
 func main() {

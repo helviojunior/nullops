@@ -14,14 +14,14 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/helviojunior/fmweb/internal/ascii"
-	"github.com/helviojunior/fmweb/pkg/assets"
-	"github.com/helviojunior/fmweb/pkg/auth"
-	"github.com/helviojunior/fmweb/pkg/fileops"
-	"github.com/helviojunior/fmweb/pkg/log"
-	"github.com/helviojunior/fmweb/pkg/server"
-	"github.com/helviojunior/fmweb/pkg/session"
-	"github.com/helviojunior/fmweb/pkg/tlsutil"
+	"github.com/helviojunior/nullops/internal/ascii"
+	"github.com/helviojunior/nullops/pkg/assets"
+	"github.com/helviojunior/nullops/pkg/auth"
+	"github.com/helviojunior/nullops/pkg/fileops"
+	"github.com/helviojunior/nullops/pkg/log"
+	"github.com/helviojunior/nullops/pkg/server"
+	"github.com/helviojunior/nullops/pkg/session"
+	"github.com/helviojunior/nullops/pkg/tlsutil"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )
@@ -46,7 +46,7 @@ var webOpts = struct {
 
 var webCmd = &cobra.Command{
 	Use:   "web",
-	Short: "Start the web file manager",
+	Short: "Start NullOps - Web Resource Manager",
 	Long: ascii.LogoHelp(`Start the HTTPS web server. The UI is embedded in the binary and served
 from memory. Every /api payload is encrypted end-to-end (ECDH P-256 +
 AES-256-GCM, one key per session).
@@ -54,10 +54,10 @@ AES-256-GCM, one key per session).
 On first run, if <data-dir> has no certificate one is generated, and if it has
 no user an "admin" account with a random password is created and printed once.`),
 	Example: `
-   - fmweb web
-   - fmweb web -r /data -b 0.0.0.0 -p 8443
-   - fmweb web -r /srv/share --readonly --exclude '*.key' --exclude node_modules
-   - fmweb web --no-tls          (asks for confirmation: disables payload encryption)`,
+   - nullops web
+   - nullops web -r /data -b 0.0.0.0 -p 8443
+   - nullops web -r /srv/share --readonly --exclude '*.key' --exclude node_modules
+   - nullops web --no-tls          (asks for confirmation: disables payload encryption)`,
 	RunE: runWeb,
 }
 
@@ -124,7 +124,7 @@ func runWeb(cmd *cobra.Command, args []string) error {
 			if err := tlsutil.Generate(d.CertFile(), d.KeyFile(), tlsutil.Options{Hosts: hosts}); err != nil {
 				return fmt.Errorf("generating certificate: %w", err)
 			}
-			log.Warn("no certificate found: generated a self-signed one (see `fmweb create-tls`)", "path", d.TLSDir())
+			log.Warn("no certificate found: generated a self-signed one (see `nullops create-tls`)", "path", d.TLSDir())
 		}
 		c, err := tlsutil.Load(d.CertFile(), d.KeyFile())
 		if err != nil {
@@ -242,7 +242,7 @@ func printBanner(root string, https bool, genUser, genPass string, users []strin
 		fmt.Printf("  \033[32muser\033[0m      %s\n", genUser)
 		fmt.Printf("  \033[32mpass\033[0m      %s   \033[90m(generated now, shown only once)\033[0m\n", genPass)
 	default:
-		fmt.Printf("  \033[32musers\033[0m     %d configured (fmweb add-user to manage)\n", len(users))
+		fmt.Printf("  \033[32musers\033[0m     %d configured (nullops add-user to manage)\n", len(users))
 	}
 	fmt.Println()
 	if https {
@@ -275,7 +275,7 @@ func init() {
 	f.BoolVar(&webOpts.ShowHidden, "show-hidden", false, "Show dotfiles")
 	f.StringArrayVar(&webOpts.Exclude, "exclude", nil, "Hide entries matching this glob (repeatable)")
 	f.StringSliceVar(&webOpts.AllowExt, "allow-ext", nil, "Only allow uploads with these extensions (e.g. pdf,txt)")
-	f.StringVar(&webOpts.Title, "title", "Web File Manager", "Title shown in the UI")
+	f.StringVar(&webOpts.Title, "title", "NullOps - Web Resource Manager", "Title shown in the UI")
 	f.StringVar(&webOpts.AuditLog, "audit-log", "", "Also write audit events (access, login, file operations) as JSON lines to this file")
 	f.StringSliceVar(&webOpts.Trusted, "trusted-proxy", nil, "IP/CIDR of a reverse proxy whose X-Forwarded-For / X-Real-IP is trusted (repeatable)")
 	f.StringVar(&webOpts.MaxUpload, "max-upload", "0", "Maximum size of one uploaded file, e.g. 500M, 2G (0 = unlimited)")

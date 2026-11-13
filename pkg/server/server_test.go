@@ -18,10 +18,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/helviojunior/fmweb/pkg/auth"
-	"github.com/helviojunior/fmweb/pkg/crypto"
-	"github.com/helviojunior/fmweb/pkg/fileops"
-	"github.com/helviojunior/fmweb/pkg/session"
+	"github.com/helviojunior/nullops/pkg/auth"
+	"github.com/helviojunior/nullops/pkg/crypto"
+	"github.com/helviojunior/nullops/pkg/fileops"
+	"github.com/helviojunior/nullops/pkg/session"
 )
 
 type env struct {
@@ -253,7 +253,7 @@ func TestSessionRevocation(t *testing.T) {
 		t.Fatal(r)
 	}
 	time.Sleep(10 * time.Millisecond)
-	e.store.DeleteUser("alice") // `fmweb sessions revoke --user alice`
+	e.store.DeleteUser("alice") // `nullops sessions revoke --user alice`
 	if r := c.call("list", map[string]string{"path": ""}); r["_status"] != float64(401) {
 		t.Fatalf("revoked session still works: %v", r)
 	}

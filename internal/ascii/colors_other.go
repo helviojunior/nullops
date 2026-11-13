@@ -1,7 +1,7 @@
 //go:build !windows
 
 /*
- * Web File Manager (fmweb)
+ * NullOps - Web Resource Manager (nullops)
  * Copyright (c) 2025 Helvio Junior <helvio_junior [at] hotmail [dot] com>
  *
  * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES

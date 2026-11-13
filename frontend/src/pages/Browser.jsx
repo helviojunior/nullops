@@ -136,14 +136,14 @@ export default function Browser() {
   const [dropTarget, setDropTarget] = useState(null);
   const [view, setView] = useState(() => {
     try {
-      return { sort: "name", dir: "asc", filter: "all", ...JSON.parse(localStorage.getItem("fmweb.view") || "{}") };
+      return { sort: "name", dir: "asc", filter: "all", ...JSON.parse(localStorage.getItem("nullops.view") || "{}") };
     } catch {
       return { sort: "name", dir: "asc", filter: "all" };
     }
   });
   useEffect(() => {
     try {
-      localStorage.setItem("fmweb.view", JSON.stringify(view));
+      localStorage.setItem("nullops.view", JSON.stringify(view));
     } catch {
       /* ignore */
     }
@@ -195,8 +195,8 @@ export default function Browser() {
 
   useEffect(() => {
     const onChanged = () => load();
-    window.addEventListener("fmweb:changed", onChanged);
-    return () => window.removeEventListener("fmweb:changed", onChanged);
+    window.addEventListener("nullops:changed", onChanged);
+    return () => window.removeEventListener("nullops:changed", onChanged);
   }, [load]);
 
   const allEntries = useMemo(() => (results ? results : listing?.entries || []), [results, listing]);

@@ -70,10 +70,10 @@ func Generate(certFile, keyFile string, opt Options) error {
 	if err != nil {
 		return err
 	}
-	cn := "fmweb"
+	cn := "nullops"
 	tpl := &x509.Certificate{
 		SerialNumber:          serial,
-		Subject:               pkix.Name{CommonName: cn, Organization: []string{"Web File Manager"}},
+		Subject:               pkix.Name{CommonName: cn, Organization: []string{"NullOps - Web Resource Manager"}},
 		NotBefore:             time.Now().Add(-5 * time.Minute),
 		NotAfter:              time.Now().Add(time.Duration(opt.Days) * 24 * time.Hour),
 		KeyUsage:              x509.KeyUsageDigitalSignature,

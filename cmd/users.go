@@ -7,10 +7,10 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/helviojunior/fmweb/internal/ascii"
-	"github.com/helviojunior/fmweb/pkg/auth"
-	"github.com/helviojunior/fmweb/pkg/log"
-	"github.com/helviojunior/fmweb/pkg/session"
+	"github.com/helviojunior/nullops/internal/ascii"
+	"github.com/helviojunior/nullops/pkg/auth"
+	"github.com/helviojunior/nullops/pkg/log"
+	"github.com/helviojunior/nullops/pkg/session"
 	"github.com/spf13/cobra"
 )
 
@@ -18,7 +18,7 @@ var listUsersCmd = &cobra.Command{
 	Use:     "list-users",
 	Short:   "List the users allowed to sign in",
 	Long:    ascii.LogoHelp(`List the users in <data-dir>/users.json (no secrets are shown).`),
-	Example: "\n   - fmweb list-users",
+	Example: "\n   - nullops list-users",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		d, err := dataDir()
 		if err != nil {
@@ -30,7 +30,7 @@ var listUsersCmd = &cobra.Command{
 		}
 		users := store.List()
 		if len(users) == 0 {
-			fmt.Println("no users (run `fmweb add-user -u <name>`)")
+			fmt.Println("no users (run `nullops add-user -u <name>`)")
 			return nil
 		}
 		w := tabwriter.NewWriter(os.Stdout, 0, 2, 2, ' ', 0)
@@ -54,7 +54,7 @@ var delUserCmd = &cobra.Command{
 	Use:     "del-user <username>",
 	Short:   "Delete a user and revoke its sessions",
 	Long:    ascii.LogoHelp(`Delete a user from <data-dir>/users.json and revoke every session it has.`),
-	Example: "\n   - fmweb del-user bob",
+	Example: "\n   - nullops del-user bob",
 	Args:    cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		d, err := dataDir()
@@ -92,10 +92,10 @@ var sessionsCmd = &cobra.Command{
 	Long: ascii.LogoHelp(`List the active sessions stored in <data-dir>/sessions.db, or revoke them.
 A running server notices a revoked session within a few seconds.`),
 	Example: `
-   - fmweb sessions
-   - fmweb sessions revoke 3fa9c1
-   - fmweb sessions revoke --user bob
-   - fmweb sessions revoke --all`,
+   - nullops sessions
+   - nullops sessions revoke 3fa9c1
+   - nullops sessions revoke --user bob
+   - nullops sessions revoke --all`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		st, err := openSessions()
 		if err != nil {

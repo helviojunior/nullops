@@ -1,6 +1,6 @@
 package main
 
-import "github.com/helviojunior/fmweb/cmd"
+import "github.com/helviojunior/nullops/cmd"
 
 func main() {
 	cmd.Execute()

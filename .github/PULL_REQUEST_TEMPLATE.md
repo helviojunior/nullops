@@ -59,8 +59,8 @@
 - [ ] `make assets` (front-end + bundle) executado
 - [ ] `make test` (Go) passando
 - [ ] `make test-frontend` passando
-- [ ] `make local` compila e `./build/fmweb_<os>_<arch> --help` executa
-- [ ] Testei a interface web no navegador (`fmweb web`), se aplicável
+- [ ] `make local` compila e `./build/nullops_<os>_<arch> --help` executa
+- [ ] Testei a interface web no navegador (`nullops web`), se aplicável
 - [ ] Testei com e sem `--no-tls`, se aplicável
 
 ## 🔒 Security
@@ -136,4 +136,4 @@
 
 ---
 
-**Thank you for contributing to fmweb! 🗂️**
+**Thank you for contributing to nullops! 🗂️**

@@ -2,8 +2,8 @@
 TARGET=./build
 ARCHS=amd64 386 arm64
 GOOS=windows linux darwin
-PACKAGENAME="github.com/helviojunior/fmweb"
-BINNAME=fmweb
+PACKAGENAME="github.com/helviojunior/nullops"
+BINNAME=nullops
 
 FRONTEND_DIR=./frontend
 FRONTEND_DIST=./frontend/dist

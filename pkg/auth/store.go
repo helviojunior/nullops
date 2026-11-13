@@ -42,7 +42,7 @@ var validName = regexp.MustCompile(`^[A-Za-z0-9._@-]{1,64}$`)
 const reloadEvery = 2 * time.Second
 
 // Store is the JSON-file backed user database. Changes made to the file by
-// another process (e.g. `fmweb add-user` while the server runs) are picked up
+// another process (e.g. `nullops add-user` while the server runs) are picked up
 // automatically.
 type Store struct {
 	path  string
@@ -276,7 +276,7 @@ func (s *Store) Verify(name, password string) (User, bool) {
 	s.mu.RUnlock()
 	if !ok {
 		// Spend the same scrypt work to reduce user-enumeration timing signal.
-		s.dummyOnce.Do(func() { s.dummy, _ = HashPassword("fmweb-dummy") })
+		s.dummyOnce.Do(func() { s.dummy, _ = HashPassword("nullops-dummy") })
 		VerifyPassword(password, s.dummy)
 		return User{}, false
 	}

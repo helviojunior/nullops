@@ -1,6 +1,6 @@
 // Package datadir resolves the on-disk location of the user's state: TLS
-// certificate/key and the user database. Everything lives under a single
-// directory, ./fmweb by default.
+// certificate/key, the user database and the sessions. Everything lives under
+// a single directory, ~/.nullops by default (%USERPROFILE%\.nullops on Windows).
 package datadir
 
 import (
@@ -8,10 +8,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
-// Default is the default data directory, relative to the working directory.
-const Default = "./fmweb"
+// Default is the default data directory: ".nullops" in the user's home.
+const Default = "~/.nullops"
 
 // Dir is a resolved data directory.
 type Dir struct {
@@ -22,6 +23,10 @@ type Dir struct {
 func Resolve(path string) (*Dir, error) {
 	if path == "" {
 		path = Default
+	}
+	path, err := expandHome(path)
+	if err != nil {
+		return nil, err
 	}
 	abs, err := filepath.Abs(path)
 	if err != nil {
@@ -36,7 +41,7 @@ func (d *Dir) Ensure() error {
 	if err == nil {
 		if !st.IsDir() {
 			return fmt.Errorf("data directory %q exists but is not a directory "+
-				"(is the fmweb binary in the same folder? use --data-dir)", d.Root)
+				"(use --data-dir to choose another folder)", d.Root)
 		}
 		return nil
 	}
@@ -60,3 +65,15 @@ func (d *Dir) UsersFile() string { return filepath.Join(d.Root, "users.json") }
 
 // SessionsFile is the SQLite database of authenticated sessions.
 func (d *Dir) SessionsFile() string { return filepath.Join(d.Root, "sessions.db") }
+
+// expandHome turns a leading "~" into the user's home directory.
+func expandHome(path string) (string, error) {
+	if path != "~" && !strings.HasPrefix(path, "~/") && !strings.HasPrefix(path, `~\`) {
+		return path, nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("cannot find the home directory (use --data-dir): %w", err)
+	}
+	return filepath.Join(home, path[1:]), nil
+}
