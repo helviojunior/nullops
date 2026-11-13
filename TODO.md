@@ -28,7 +28,7 @@ Legend: `[x]` done · `[ ]` pending · `[~]` partial
 
 ### Backend / security
 - [x] Encrypted `/api` channel: ECDH P-256 handshake → HKDF-SHA256 → AES-256-GCM, one key per session
-- [x] Sessions persisted in `~/.nullops/sessions.db` (pure-Go SQLite), valid for 12h (`--session-ttl`), surviving
+- [x] Sessions persisted in `~/.nullops/nullops.db` (pure-Go SQLite), valid for 12h (`--session-ttl`), surviving
       page reloads and server restarts: id stored only as SHA-256, AES key wrapped with a key derived from the id;
       browser keeps a non-extractable `CryptoKey` in IndexedDB; logout deletes the session
 - [x] Account re-checked on every request (removed user loses the session; read-only flag changes apply)
@@ -93,6 +93,17 @@ Legend: `[x]` done · `[ ]` pending · `[~]` partial
       edge (180–600 px, double-click resets, arrow keys when focused) and **collapsible** (header button or panel
       button); width and open/closed state remembered per browser
 - [x] File table columns adapt to the space left by the panel
+- [x] **PastePad** (second tab of the side panel, next to *Folders*): shared plain-text pads, like dontpad
+  - create a pad with a name in `[A-Za-z0-9._-]` (1–64), open it at `/pad/<name>`, delete it (with confirmation)
+  - every signed-in user sees and edits every pad at the same time, from any computer/session; presence shows
+    who is editing
+  - sync: **long polling over the encrypted `/api` channel** (no WebSocket: reuses the ECDH/AES-GCM session, rate
+    limit and audit, works through proxies; a change is pushed as soon as it happens) + **Operational
+    Transformation** (ot.js algorithm in Go and JS, UTF-16 offsets): concurrent edits — even at the same position —
+    are transformed and merged, never overwritten; retried requests are de-duplicated; a client too far behind is
+    resynced with a snapshot
+  - persistence: every 5 s (and on shutdown) to `~/.nullops/pads/<UUID>`, AES-256-GCM (AAD = UUID), with the
+    per-pad 256-bit key stored in SQLite (`~/.nullops/nullops.db`, table `pads`); limit 1 Mi characters per pad
 - [x] Editor on its own route (`/edit/<path>`), with a "discard changes?" confirmation when leaving
 - [x] Syntax highlighting with CodeMirror 6 (JS/TS, JSON, HTML, CSS, XML, Python, Markdown, SQL, YAML, Go,
       shell, PowerShell, VBScript, TOML, INI/properties/BAT, Dockerfile, C/C++/Java/C#/Kotlin, Rust, Ruby, Lua,

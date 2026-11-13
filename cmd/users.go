@@ -72,7 +72,7 @@ var delUserCmd = &cobra.Command{
 			return err
 		}
 		n := int64(0)
-		if st, err := session.OpenSQLite(d.SessionsFile()); err == nil {
+		if st, err := session.OpenSQLite(d.DatabaseFile()); err == nil {
 			n, _ = st.DeleteUser(args[0])
 			st.Close()
 		}
@@ -89,7 +89,7 @@ var sessOpts = struct {
 var sessionsCmd = &cobra.Command{
 	Use:   "sessions",
 	Short: "List or revoke active web sessions",
-	Long: ascii.LogoHelp(`List the active sessions stored in <data-dir>/sessions.db, or revoke them.
+	Long: ascii.LogoHelp(`List the active sessions stored in <data-dir>/nullops.db, or revoke them.
 A running server notices a revoked session within a few seconds.`),
 	Example: `
    - nullops sessions
@@ -181,7 +181,7 @@ func openSessions() (*session.SQLiteStore, error) {
 	if err != nil {
 		return nil, err
 	}
-	return session.OpenSQLite(d.SessionsFile())
+	return session.OpenSQLite(d.DatabaseFile())
 }
 
 func init() {

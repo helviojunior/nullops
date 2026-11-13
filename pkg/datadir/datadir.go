@@ -63,8 +63,11 @@ func (d *Dir) KeyFile() string { return filepath.Join(d.TLSDir(), "key.pem") }
 // UsersFile is the JSON user database path.
 func (d *Dir) UsersFile() string { return filepath.Join(d.Root, "users.json") }
 
-// SessionsFile is the SQLite database of authenticated sessions.
-func (d *Dir) SessionsFile() string { return filepath.Join(d.Root, "sessions.db") }
+// DatabaseFile is the SQLite database: sessions and PastePad metadata/keys.
+func (d *Dir) DatabaseFile() string { return filepath.Join(d.Root, "nullops.db") }
+
+// PadsDir holds the encrypted PastePad contents, one file per pad UUID.
+func (d *Dir) PadsDir() string { return filepath.Join(d.Root, "pads") }
 
 // expandHome turns a leading "~" into the user's home directory.
 func expandHome(path string) (string, error) {

@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, Navigate, Outlet, useLocation } from "react-router-dom";
 import {
-  FolderLock,
   LogOut,
   Moon,
   Sun,
@@ -15,6 +14,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "contexts/AuthContext";
 import { TreeProvider } from "contexts/TreeContext";
+import Logo from "components/brand/Logo";
 import FolderTree, { TREE_DEFAULT, TREE_MAX, TREE_MIN } from "components/layout/FolderTree";
 import { parentPath, routeToPath } from "lib/utils";
 import { useI18n, LANGUAGE_OPTIONS } from "i18n";
@@ -64,9 +64,10 @@ function loadPanel() {
     return {
       open: typeof v.open === "boolean" ? v.open : window.innerWidth >= 768,
       width: Math.min(TREE_MAX, Math.max(TREE_MIN, Number(v.width) || TREE_DEFAULT)),
+      tab: v.tab === "pads" ? "pads" : "folders",
     };
   } catch {
-    return { open: window.innerWidth >= 768, width: TREE_DEFAULT };
+    return { open: window.innerWidth >= 768, width: TREE_DEFAULT, tab: "folders" };
   }
 }
 
@@ -93,6 +94,13 @@ export default function AppLayout({ darkMode, setDarkMode }) {
   }, [panel]);
 
   const setWidth = (width) => setPanel((p) => ({ ...p, width }));
+  const setTab = (tab) => setPanel((p) => ({ ...p, tab }));
+  const padMatch = location.pathname.match(/^\/pad\/([^/]+)$/);
+  const currentPad = padMatch ? decodeURIComponent(padMatch[1]) : null;
+  // opening a pad shows the PastePad tab
+  useEffect(() => {
+    if (currentPad) setPanel((p) => (p.tab === "pads" ? p : { ...p, tab: "pads" }));
+  }, [currentPad]);
   const togglePanel = () => setPanel((p) => ({ ...p, open: !p.open }));
 
   if (!user) {
@@ -119,8 +127,10 @@ export default function AppLayout({ darkMode, setDarkMode }) {
         >
           {panel.open ? <PanelLeftClose className="h-5 w-5" /> : <PanelLeftOpen className="h-5 w-5" />}
         </button>
-        <FolderLock className="h-5 w-5 text-primary" />
-        <span className="font-semibold truncate">{user.title || t("app.name")}</span>
+        <Logo className="h-7 shrink-0" />
+        <span className="hidden truncate border-l border-border pl-3 text-sm font-medium text-muted-foreground sm:inline">
+          {!user.title || user.title === t("app.name") ? t("app.product") : user.title}
+        </span>
         {user.readonly && (
           <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-xs text-amber-500">
             {t("nav.readonly")}
@@ -153,6 +163,9 @@ export default function AppLayout({ darkMode, setDarkMode }) {
           {panel.open && (
             <FolderTree
               current={currentFolder(location.pathname)}
+              currentPad={currentPad}
+              tab={panel.tab}
+              setTab={setTab}
               width={panel.width}
               setWidth={setWidth}
               onCollapse={togglePanel}

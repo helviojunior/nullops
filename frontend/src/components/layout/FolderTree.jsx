@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { ChevronRight, Folder, FolderOpen, HardDrive, Loader2, PanelLeftClose, AlertTriangle } from "lucide-react";
+import { ChevronRight, Folder, FolderOpen, HardDrive, Loader2, PanelLeftClose, AlertTriangle, StickyNote } from "lucide-react";
+import PadList from "components/pads/PadList";
 import { useTree } from "contexts/TreeContext";
 import { useI18n } from "i18n";
 import { cn, joinPath, pathToRoute } from "lib/utils";
@@ -91,7 +92,7 @@ function TreeNode({ path, name, depth, current }) {
  * Left side panel with the folder hierarchy. Resizable by dragging its right
  * edge (double-click resets the width) and collapsible.
  */
-export default function FolderTree({ current, width, setWidth, onCollapse }) {
+export default function FolderTree({ current, currentPad, tab, setTab, width, setWidth, onCollapse }) {
   const { t } = useI18n();
   const { reveal } = useTree();
   const [dragging, setDragging] = useState(false);
@@ -99,8 +100,8 @@ export default function FolderTree({ current, width, setWidth, onCollapse }) {
   const listRef = useRef(null);
 
   useEffect(() => {
-    reveal(current);
-  }, [current, reveal]);
+    if (tab !== "pads") reveal(current);
+  }, [current, reveal, tab]);
 
   // keep the active folder in view when the user navigates
   useEffect(() => {
@@ -150,21 +151,47 @@ export default function FolderTree({ current, width, setWidth, onCollapse }) {
       style={{ width }}
       aria-label={t("tree.title")}
     >
-      <div className="flex h-10 shrink-0 items-center justify-between border-b border-border px-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        {t("tree.title")}
+      <div className="flex h-10 shrink-0 items-stretch border-b border-border pl-1 pr-2 text-xs font-medium uppercase tracking-wide">
+        <div role="tablist" className="flex min-w-0 flex-1 items-stretch">
+          {[
+            ["folders", t("tree.title"), Folder],
+            ["pads", t("pad.tab"), StickyNote],
+          ].map(([id, label, Icon]) => (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={tab === id}
+              onClick={() => setTab(id)}
+              className={cn(
+                "inline-flex min-w-0 items-center gap-1.5 border-b-2 px-2.5 transition-colors",
+                tab === id
+                  ? "border-primary text-foreground"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <Icon className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">{label}</span>
+            </button>
+          ))}
+        </div>
         <button
           type="button"
           onClick={onCollapse}
-          className="rounded p-1 hover:bg-muted hover:text-foreground"
+          className="my-auto rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
           title={t("tree.hide")}
           aria-label={t("tree.hide")}
         >
           <PanelLeftClose className="h-4 w-4" />
         </button>
       </div>
-      <ul ref={listRef} className="min-h-0 flex-1 overflow-auto p-1.5 scrollbar-thin">
-        <TreeNode path="" name={t("browser.root")} depth={0} current={current} />
-      </ul>
+      {tab === "pads" ? (
+        <PadList current={currentPad} />
+      ) : (
+        <ul ref={listRef} className="min-h-0 flex-1 overflow-auto p-1.5 scrollbar-thin">
+          <TreeNode path="" name={t("browser.root")} depth={0} current={current} />
+        </ul>
+      )}
       <div
         role="separator"
         aria-orientation="vertical"

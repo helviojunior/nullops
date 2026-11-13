@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Navigate } from "react-router-dom";
-import { ArrowLeft, FolderLock, KeyRound, Loader2, ServerCrash, ShieldAlert, UserRound } from "lucide-react";
+import { ArrowLeft, KeyRound, Loader2, ServerCrash, ShieldAlert, UserRound } from "lucide-react";
 import { useAuth } from "contexts/AuthContext";
 import { useI18n } from "i18n";
 import { Button } from "components/ui/button";
@@ -8,6 +8,7 @@ import { Input } from "components/ui/input";
 import { Label } from "components/ui/label";
 import { Card, CardContent, CardHeader } from "components/ui/card";
 import { LanguageSelect, ThemeToggle } from "components/layout/AppLayout";
+import Logo from "components/brand/Logo";
 
 // Authentication screen: the documented exception to the 100%-width rule
 // (centered 420px card, standard login layout).
@@ -75,10 +76,8 @@ export default function Login({ darkMode, setDarkMode }) {
       <div className="flex flex-1 items-center justify-center p-4">
         <Card className="w-full max-w-[420px] animate-fade-in">
           <CardHeader className="items-center text-center">
-            <div className="mb-2 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10">
-              <FolderLock className="h-7 w-7 text-primary" />
-            </div>
-            <h1 className="text-xl font-semibold">{t("app.name")}</h1>
+            <Logo className="mb-3 h-14" alt={t("app.name")} />
+            <h1 className="text-lg font-semibold">{t("app.product")}</h1>
             <p className="text-sm text-muted-foreground">
               {encrypted ? t("login.subtitle") : t("login.subtitlePlain")}
             </p>

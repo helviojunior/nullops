@@ -180,6 +180,9 @@ func (s *SQLiteStore) DeletePrefix(prefix string) (int64, error) {
 	return res.RowsAffected()
 }
 
+// DB exposes the database (shared with other stores, e.g. pads).
+func (s *SQLiteStore) DB() *sql.DB { return s.db }
+
 // Close closes the database.
 func (s *SQLiteStore) Close() error { return s.db.Close() }
 

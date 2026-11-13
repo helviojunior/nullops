@@ -169,7 +169,7 @@ func isAppRoute(name string) bool {
 	if strings.HasPrefix(name, "assets/") {
 		return false
 	}
-	for _, p := range []string{"files/", "edit/", "view/"} {
+	for _, p := range []string{"files/", "edit/", "view/", "pad/"} {
 		if strings.HasPrefix(name, p) {
 			return true
 		}

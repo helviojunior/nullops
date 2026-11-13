@@ -2,6 +2,7 @@
 export const LOCALES = {
   en: {
     "app.name": "NullOps - Web Resource Manager",
+    "app.product": "Web Resource Manager",
     "app.secure": "ECDH P-256 + AES-256-GCM · one key per session",
     "app.plain": "Payload encryption DISABLED (--no-tls) · traffic in clear text",
 
@@ -17,6 +18,8 @@ export const LOCALES = {
     "common.language": "Language",
     "common.theme": "Toggle theme",
     "common.error": "Error",
+    "common.copy": "Copy",
+    "common.copied": "Copied to the clipboard",
 
     "login.title": "Sign in",
     "login.subtitle": "Encrypted session · payload encrypted end to end",
@@ -62,6 +65,22 @@ export const LOCALES = {
     "nav.readonly": "read-only",
 
     "browser.root": "Root",
+    "pad.tab": "PastePad",
+    "pad.new": "New pad",
+    "pad.name": "Pad name",
+    "pad.nameHint": "Letters, digits, dot, dash and underscore (a-z A-Z 0-9 . - _).",
+    "pad.invalidName": "Use only letters, digits, dot, dash and underscore.",
+    "pad.empty": "No pads yet. Create one to share text with every signed-in user.",
+    "pad.deleteTitle": "Delete pad “{name}”?",
+    "pad.deleteDesc": "The pad and its content are removed for everyone. This cannot be undone.",
+    "pad.deleted": "Pad “{name}” deleted",
+    "pad.resynced": "Pad reloaded from the server",
+    "pad.chars": "{n} characters",
+    "pad.status.loading": "Loading…",
+    "pad.status.synced": "Saved",
+    "pad.status.saving": "Syncing…",
+    "pad.status.offline": "Offline — retrying",
+
     "tree.title": "Folders",
     "tree.show": "Show folders panel",
     "tree.hide": "Hide folders panel",
@@ -176,6 +195,7 @@ export const LOCALES = {
 
   "pt-br": {
     "app.name": "NullOps - Web Resource Manager",
+    "app.product": "Web Resource Manager",
     "app.secure": "ECDH P-256 + AES-256-GCM · uma chave por sessão",
     "app.plain": "Criptografia de payload DESATIVADA (--no-tls) · tráfego em texto claro",
 
@@ -191,6 +211,8 @@ export const LOCALES = {
     "common.language": "Idioma",
     "common.theme": "Alternar tema",
     "common.error": "Erro",
+    "common.copy": "Copiar",
+    "common.copied": "Copiado para a área de transferência",
 
     "login.title": "Entrar",
     "login.subtitle": "Sessão criptografada · payload cifrado de ponta a ponta",
@@ -236,6 +258,22 @@ export const LOCALES = {
     "nav.readonly": "somente leitura",
 
     "browser.root": "Raiz",
+    "pad.tab": "PastePad",
+    "pad.new": "Novo pad",
+    "pad.name": "Nome do pad",
+    "pad.nameHint": "Letras, números, ponto, hífen e sublinhado (a-z A-Z 0-9 . - _).",
+    "pad.invalidName": "Use apenas letras, números, ponto, hífen e sublinhado.",
+    "pad.empty": "Nenhum pad ainda. Crie um para compartilhar texto com todos os usuários logados.",
+    "pad.deleteTitle": "Excluir o pad “{name}”?",
+    "pad.deleteDesc": "O pad e seu conteúdo são removidos para todos. Não é possível desfazer.",
+    "pad.deleted": "Pad “{name}” excluído",
+    "pad.resynced": "Pad recarregado do servidor",
+    "pad.chars": "{n} caracteres",
+    "pad.status.loading": "Carregando…",
+    "pad.status.synced": "Salvo",
+    "pad.status.saving": "Sincronizando…",
+    "pad.status.offline": "Sem conexão — tentando novamente",
+
     "tree.title": "Pastas",
     "tree.show": "Mostrar painel de pastas",
     "tree.hide": "Ocultar painel de pastas",

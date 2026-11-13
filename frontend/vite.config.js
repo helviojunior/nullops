@@ -15,6 +15,7 @@ export default defineConfig({
       lib: src("lib"),
       pages: src("pages"),
       i18n: src("i18n"),
+      assets: src("assets"),
     },
   },
   build: {

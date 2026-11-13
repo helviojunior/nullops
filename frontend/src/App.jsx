@@ -12,6 +12,7 @@ import Viewer from "pages/Viewer";
 
 // The editor pulls CodeMirror in: loaded only when a file is opened.
 const Editor = lazy(() => import("pages/Editor"));
+const PadEditor = lazy(() => import("pages/PadEditor"));
 const Lazy = ({ children }) => (
   <Suspense
     fallback={
@@ -74,6 +75,7 @@ const router = createBrowserRouter([
           // Object detail (the editor) always gets its own route, never a modal.
           { path: "/edit/*", element: <Lazy><Editor /></Lazy> },
           { path: "/view/*", element: <Viewer /> },
+          { path: "/pad/:name", element: <Lazy><PadEditor /></Lazy> },
           { path: "/account", element: <Account /> },
         ],
       },

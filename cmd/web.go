@@ -19,6 +19,7 @@ import (
 	"github.com/helviojunior/nullops/pkg/auth"
 	"github.com/helviojunior/nullops/pkg/fileops"
 	"github.com/helviojunior/nullops/pkg/log"
+	"github.com/helviojunior/nullops/pkg/pads"
 	"github.com/helviojunior/nullops/pkg/server"
 	"github.com/helviojunior/nullops/pkg/session"
 	"github.com/helviojunior/nullops/pkg/tlsutil"
@@ -133,16 +134,22 @@ func runWeb(cmd *cobra.Command, args []string) error {
 		cert = &c
 	}
 
-	// authenticated sessions survive restarts (12h by default)
+	// one SQLite database: sessions (survive restarts, 12h by default) and
+	// PastePad metadata + per-pad AES keys
+	db, err := session.OpenSQLite(d.DatabaseFile())
+	if err != nil {
+		return fmt.Errorf("database %s: %w", d.DatabaseFile(), err)
+	}
+	defer db.Close()
 	var sessStore session.Store
 	if !webOpts.NoAuth {
-		st, err := session.OpenSQLite(d.SessionsFile())
-		if err != nil {
-			return fmt.Errorf("session database %s: %w", d.SessionsFile(), err)
-		}
-		defer st.Close()
-		sessStore = st
+		sessStore = db
 	}
+	padStore, err := pads.OpenStore(db.DB(), d.PadsDir())
+	if err != nil {
+		return fmt.Errorf("pads: %w", err)
+	}
+	padMgr := pads.NewManager(padStore)
 
 	addr := net.JoinHostPort(webOpts.Bind, strconv.Itoa(webOpts.Port))
 	srv, err := server.New(server.Config{
@@ -156,6 +163,7 @@ func runWeb(cmd *cobra.Command, args []string) error {
 		Sessions:       sessStore,
 		TrustedProxies: trusted,
 		MaxUpload:      maxUpload,
+		Pads:           padMgr,
 		AllowedExt:     webOpts.AllowExt,
 		Users:          store,
 		FS:             fsys,
@@ -168,7 +176,14 @@ func runWeb(cmd *cobra.Command, args []string) error {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	padsDone := make(chan struct{})
+	go func() {
+		padMgr.Run(ctx) // persists pads every few seconds, flushes on exit
+		close(padsDone)
+	}()
 	err = srv.ListenAndServe(ctx)
+	stop()
+	<-padsDone
 	if ctx.Err() != nil {
 		fmt.Println()
 		log.Info("stopped")
@@ -279,7 +294,7 @@ func init() {
 	f.StringVar(&webOpts.AuditLog, "audit-log", "", "Also write audit events (access, login, file operations) as JSON lines to this file")
 	f.StringSliceVar(&webOpts.Trusted, "trusted-proxy", nil, "IP/CIDR of a reverse proxy whose X-Forwarded-For / X-Real-IP is trusted (repeatable)")
 	f.StringVar(&webOpts.MaxUpload, "max-upload", "0", "Maximum size of one uploaded file, e.g. 500M, 2G (0 = unlimited)")
-	f.IntVar(&webOpts.SessionTTL, "session-ttl", 12*3600, "Session lifetime in seconds after login (default 12h); sessions are kept in <data-dir>/sessions.db")
+	f.IntVar(&webOpts.SessionTTL, "session-ttl", 12*3600, "Session lifetime in seconds after login (default 12h); sessions are kept in <data-dir>/nullops.db")
 }
 
 // parseSize parses "0", "1024", "500K", "500M", "2G", "1T" (binary units).

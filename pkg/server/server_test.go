@@ -21,6 +21,7 @@ import (
 	"github.com/helviojunior/nullops/pkg/auth"
 	"github.com/helviojunior/nullops/pkg/crypto"
 	"github.com/helviojunior/nullops/pkg/fileops"
+	"github.com/helviojunior/nullops/pkg/pads"
 	"github.com/helviojunior/nullops/pkg/session"
 )
 
@@ -49,7 +50,12 @@ func newEnv(t *testing.T, mutate func(*Config)) *env {
 	}
 	t.Cleanup(func() { st.Close() })
 	fsys, _ := fileops.New(root, fileops.Options{})
-	cfg := Config{Users: users, FS: fsys, Sessions: st, SessionTTL: time.Hour, Title: "test"}
+	padStore, err := pads.OpenStore(st.DB(), filepath.Join(dir, "pads"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := Config{Users: users, FS: fsys, Sessions: st, SessionTTL: time.Hour, Title: "test",
+		Pads: pads.NewManager(padStore)}
 	if mutate != nil {
 		mutate(&cfg)
 	}
@@ -305,5 +311,55 @@ func TestTrustedProxy(t *testing.T) {
 	r.RemoteAddr = "198.51.100.7:1"
 	if ip := s.clientIP(r); ip != "198.51.100.7" {
 		t.Fatalf("untrusted proxy honoured: %s", ip)
+	}
+}
+
+func TestPastePadOverHTTP(t *testing.T) {
+	e := newEnv(t, nil)
+	a := e.connect()
+	a.login("alice", "alicepass1")
+	b := e.connect()
+	b.login("reader", "readerpass1")
+
+	if r := a.call("pad_create", map[string]string{"name": "bad name!"}); r["ok"] != false {
+		t.Fatalf("invalid name accepted: %v", r)
+	}
+	if r := a.call("pad_create", map[string]string{"name": "team.notes-1"}); r["ok"] != true {
+		t.Fatal(r)
+	}
+	// alice types, bob (another session/user) receives it through the long poll
+	done := make(chan map[string]any, 1)
+	go func() {
+		done <- b.call("pad_poll", map[string]any{"name": "team.notes-1", "client": "B", "rev": 0})
+	}()
+	time.Sleep(100 * time.Millisecond)
+	r := a.call("pad_edit", map[string]any{"name": "team.notes-1", "client": "A", "seq": 1, "rev": 0, "op": []any{"hello"}})
+	if r["ok"] != true {
+		t.Fatal(r)
+	}
+	select {
+	case p := <-done:
+		res := p["result"].(map[string]any)
+		ch := res["changes"].([]any)
+		if res["rev"] != float64(1) || len(ch) != 1 {
+			t.Fatalf("poll: %v", p)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("long poll did not return")
+	}
+	// concurrent edits on revision 1 are merged
+	a.call("pad_edit", map[string]any{"name": "team.notes-1", "client": "A", "seq": 2, "rev": 1, "op": []any{5, " world"}})
+	b.call("pad_edit", map[string]any{"name": "team.notes-1", "client": "B", "seq": 1, "rev": 1, "op": []any{">> ", 5}})
+	snap := b.call("pad_open", map[string]any{"name": "team.notes-1", "client": "B"})["result"].(map[string]any)
+	if snap["text"] != ">> hello world" {
+		t.Fatalf("merged text: %v", snap["text"])
+	}
+	list := a.call("pad_list", map[string]any{})["result"].([]any)
+	if len(list) != 1 {
+		t.Fatalf("list: %v", list)
+	}
+	// anonymous sessions cannot reach pads
+	if r := e.connect().call("pad_list", map[string]any{}); r["_status"] != float64(401) {
+		t.Fatalf("unauthenticated pad access: %v", r)
 	}
 }

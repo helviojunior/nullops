@@ -29,6 +29,7 @@ import (
 	"github.com/helviojunior/nullops/pkg/crypto"
 	"github.com/helviojunior/nullops/pkg/fileops"
 	"github.com/helviojunior/nullops/pkg/log"
+	"github.com/helviojunior/nullops/pkg/pads"
 	"github.com/helviojunior/nullops/pkg/session"
 )
 
@@ -56,6 +57,8 @@ type Config struct {
 	AllowedExt []string
 	Users      *auth.Store
 	FS         *fileops.FS
+	// Pads is the PastePad manager (nil = disabled).
+	Pads *pads.Manager
 }
 
 // Server is the web server.
@@ -259,6 +262,10 @@ func (s *Server) handleAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	case "upload":
 		s.upload(w, r, sess, plain, caller)
+		return
+	}
+	if strings.HasPrefix(action, "pad_") {
+		s.padAction(w, r, sess, user, action, plain)
 		return
 	}
 	if strings.HasPrefix(action, "mfa_") {

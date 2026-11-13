@@ -33,6 +33,10 @@ const PT = {
   "Download failed": "O download falhou",
   "Truncated download": "Download incompleto",
   "Nothing selected": "Nada selecionado",
+  "Pad not found": "Pad não encontrado",
+  "A pad with this name already exists": "Já existe um pad com este nome",
+  "Invalid pad name (allowed: letters, digits, . _ -)": "Nome de pad inválido (permitido: letras, números, . _ -)",
+  "Pad is too large": "O pad é grande demais",
 };
 
 export function errorText(err, lang) {

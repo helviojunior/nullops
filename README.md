@@ -65,9 +65,27 @@ The console shows this warning and asks `Do you want to continue? [y/N]`
 footer. A server running with TLS refuses unencrypted clients, so a client
 cannot downgrade the session to clear text.
 
+### PastePad
+
+The side panel has two tabs: **Folders** and **PastePad**. PastePad keeps shared
+plain-text pads, like dontpad: create one with a name made of letters, digits,
+`.`, `-` and `_`, and every signed-in user can open it at `/pad/<name>` and edit
+it at the same time, from any computer.
+
+- **Sync**: long polling over the same encrypted `/api` channel (no separate
+  WebSocket channel to secure). The server answers as soon as anyone changes the
+  pad, so updates show up immediately.
+- **Merging**: Operational Transformation. Each edit is sent as an operation
+  based on the revision the browser knew; the server transforms it against the
+  edits that arrived in the meantime, so simultaneous edits (even at the same
+  spot) are all kept, never overwritten.
+- **Storage**: every 5 seconds and on shutdown, each pad is written to
+  `~/.nullops/pads/<uuid>`, encrypted with AES-256-GCM; its 256-bit key is in
+  `~/.nullops/nullops.db`. Up to 1 Mi characters per pad.
+
 ### Folder panel
 
-A side panel on the left shows the folder hierarchy and expands itself to the
+The *Folders* tab of the side panel shows the folder hierarchy and expands itself to the
 folder being browsed. Drag its right edge to resize it (double-click resets the
 width). Hide or show it with the button at the top left of the header. The
 width and open/closed state are remembered per browser.
@@ -100,7 +118,7 @@ After login the session is valid for **12 hours** (`--session-ttl`, in
 seconds), across page reloads, new tabs and server restarts. Signing out ends
 it immediately.
 
-- **Server**: `~/.nullops/sessions.db` (SQLite, 0600). The session id is never
+- **Server**: `~/.nullops/nullops.db` (SQLite, 0600). The session id is never
   stored; rows are keyed by SHA-256(id), and the AES key is wrapped with
   AES-256-GCM under a key derived from the id. A copy of the database alone
   does not reveal session keys or allow reusing a session.
@@ -120,7 +138,8 @@ it immediately.
 ├── tls/cert.pem    # certificate
 ├── tls/key.pem     # private key (0600)
 ├── users.json      # users (scrypt hashes, 0600)
-└── sessions.db     # active sessions (SQLite, 0600)
+├── nullops.db      # SQLite (0600): active sessions + PastePad metadata and keys
+└── pads/<uuid>      # PastePad contents, AES-256-GCM encrypted (0600)
 ```
 
 On first run with no users, `web` creates `admin` with a random password and
