@@ -3,6 +3,7 @@ export const LOCALES = {
   en: {
     "app.name": "Web File Manager",
     "app.secure": "ECDH P-256 + AES-256-GCM · keys in memory only",
+    "app.plain": "Payload encryption DISABLED (--no-tls) · traffic in clear text",
 
     "common.cancel": "Cancel",
     "common.confirm": "Confirm",
@@ -30,6 +31,9 @@ export const LOCALES = {
     "login.insecureTitle": "Secure context required",
     "login.insecureHint": "This page must be opened over https:// (or http://localhost) because the browser only exposes WebCrypto in a secure context.",
     "login.expired": "Your session expired. Please sign in again.",
+    "login.subtitlePlain": "Unencrypted session (server started with --no-tls)",
+    "login.plainTitle": "Encryption disabled",
+    "login.plainHint": "This server runs without TLS and without payload encryption. Your password and every file travel in clear text and can be read by proxies or network monitoring.",
 
     "nav.logout": "Sign out",
     "nav.readonly": "read-only",
@@ -118,6 +122,7 @@ export const LOCALES = {
   "pt-br": {
     "app.name": "Web File Manager",
     "app.secure": "ECDH P-256 + AES-256-GCM · chaves apenas em memória",
+    "app.plain": "Criptografia de payload DESATIVADA (--no-tls) · tráfego em texto claro",
 
     "common.cancel": "Cancelar",
     "common.confirm": "Confirmar",
@@ -145,6 +150,9 @@ export const LOCALES = {
     "login.insecureTitle": "Contexto seguro necessário",
     "login.insecureHint": "Esta página precisa ser aberta via https:// (ou http://localhost), pois o navegador só disponibiliza o WebCrypto em contexto seguro.",
     "login.expired": "Sua sessão expirou. Entre novamente.",
+    "login.subtitlePlain": "Sessão sem criptografia (servidor iniciado com --no-tls)",
+    "login.plainTitle": "Criptografia desativada",
+    "login.plainHint": "Este servidor está sem TLS e sem criptografia de payload. Sua senha e todos os arquivos trafegam em texto claro e podem ser lidos por proxies ou monitoramento de rede.",
 
     "nav.logout": "Sair",
     "nav.readonly": "somente leitura",

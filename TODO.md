@@ -38,6 +38,10 @@ Legend: `[x]` done · `[ ]` pending · `[~]` partial
 - [x] Zip-slip protection and size cap on extraction; symlinks inside archives are ignored
 - [x] Security headers (CSP without inline scripts, `X-Frame-Options`, `nosniff`, `no-referrer`)
 - [x] Global read-only mode (`--readonly`) and per-user read-only accounts
+- [x] `--no-tls` disables the payload encryption too (no WebCrypto): console warning + `[y/N]` confirmation
+      (`-y/--yes` for non-interactive use), red banner in the UI; a TLS server refuses unencrypted clients
+- [x] Console log: page access (`/`), login (user, IP, User-Agent), logout, and every file operation
+      (upload, download, open, edit, create, rename, delete, copy, move, chmod, zip/tar, extract) with failures
 - [x] Upload extension allow-list (`--allow-ext`), hidden files (`--show-hidden`), exclusion globs (`--exclude`)
 
 ### File operations
@@ -87,7 +91,8 @@ Legend: `[x]` done · `[ ]` pending · `[~]` partial
 - [ ] Per-user home directory (restrict each user to a subfolder)
 - [ ] `del-user` / `list-users` subcommands
 - [ ] MFA (TOTP) at login
-- [ ] Audit log in a file (who did what, when, from which IP)
+- [ ] Audit log also in a file / JSON format (today: console only)
+- [ ] Real client IP behind a reverse proxy (`X-Forwarded-For` from trusted proxies)
 - [ ] ACME / Let's Encrypt in `create-tls`
 
 ### Build / distribution

@@ -35,26 +35,49 @@ export function secureContextAvailable() {
   return !!(window.isSecureContext && window.crypto && window.crypto.subtle);
 }
 
+export class InsecureContextError extends Error {
+  constructor() {
+    super("Secure context required");
+    this.name = "InsecureContextError";
+  }
+}
+
+/**
+ * Session crypto. When the server runs with --no-tls it answers the
+ * handshake with {encrypted:false}: the session is then "plain" and every
+ * method below is a pass-through (no WebCrypto needed).
+ */
 export class SessionCrypto {
   constructor() {
     this.sessionId = null;
     this.aesKey = null;
+    this.plain = false;
   }
 
   async handshake() {
-    const subtle = window.crypto.subtle;
-    const pair = await subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, false, [
-      "deriveBits",
-    ]);
-    const clientPubRaw = await subtle.exportKey("raw", pair.publicKey);
+    const subtle = secureContextAvailable() ? window.crypto.subtle : null;
+    let pair = null;
+    const body = {};
+    if (subtle) {
+      pair = await subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, false, ["deriveBits"]);
+      body.client_pub = b64urlEncode(await subtle.exportKey("raw", pair.publicKey));
+    }
 
     const resp = await fetch("/api/handshake", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ client_pub: b64urlEncode(clientPubRaw) }),
+      body: JSON.stringify(body),
     });
+    const data = await resp.json().catch(() => ({}));
+    if (data.code === "secure_context") throw new InsecureContextError();
     if (!resp.ok) throw new Error("Handshake failed");
-    const data = await resp.json();
+
+    if (data.encrypted === false) {
+      this.plain = true;
+      this.sessionId = data.session_id;
+      return { authRequired: !!data.auth_required, encrypted: false };
+    }
+    if (!subtle) throw new InsecureContextError();
 
     const serverPub = await subtle.importKey(
       "raw",
@@ -73,10 +96,11 @@ export class SessionCrypto {
       ["encrypt", "decrypt"]
     );
     this.sessionId = data.session_id;
-    return { authRequired: !!data.auth_required };
+    return { authRequired: !!data.auth_required, encrypted: true };
   }
 
   async encryptJson(obj) {
+    if (this.plain) return obj;
     const iv = window.crypto.getRandomValues(new Uint8Array(12));
     const pt = new TextEncoder().encode(JSON.stringify(obj));
     const ct = await window.crypto.subtle.encrypt({ name: "AES-GCM", iv }, this.aesKey, pt);
@@ -84,6 +108,7 @@ export class SessionCrypto {
   }
 
   async decryptJson(envelope) {
+    if (this.plain) return envelope;
     const pt = await window.crypto.subtle.decrypt(
       { name: "AES-GCM", iv: b64urlDecode(envelope.iv) },
       this.aesKey,
@@ -96,6 +121,17 @@ export class SessionCrypto {
   //   [4-byte BE len][12-byte iv][len bytes ct||tag]
   async decryptStream(body, onBytes) {
     const reader = body.getReader();
+    if (this.plain) {
+      const parts = [];
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (value) {
+          parts.push(value);
+          if (onBytes) onBytes(value.length);
+        }
+        if (done) return new Blob(parts);
+      }
+    }
     let buf = new Uint8Array(0);
     const parts = [];
     for (;;) {

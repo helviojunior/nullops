@@ -12,7 +12,7 @@ import { LanguageSelect, ThemeToggle } from "components/layout/AppLayout";
 // Authentication screen: the documented exception to the 100%-width rule
 // (centered 420px card, standard login layout).
 export default function Login({ darkMode, setDarkMode }) {
-  const { status, user, expired, login, connect } = useAuth();
+  const { status, user, expired, encrypted, login, connect } = useAuth();
   const { t, tf } = useI18n();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -52,7 +52,9 @@ export default function Login({ darkMode, setDarkMode }) {
               <FolderLock className="h-7 w-7 text-primary" />
             </div>
             <h1 className="text-xl font-semibold">{t("app.name")}</h1>
-            <p className="text-sm text-muted-foreground">{t("login.subtitle")}</p>
+            <p className="text-sm text-muted-foreground">
+              {encrypted ? t("login.subtitle") : t("login.subtitlePlain")}
+            </p>
           </CardHeader>
           <CardContent>
             {status === "insecure" && (
@@ -77,6 +79,14 @@ export default function Login({ darkMode, setDarkMode }) {
             {status === "connecting" && (
               <div className="mb-4 flex items-center gap-2 text-sm text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin" /> {t("login.connecting")}
+              </div>
+            )}
+            {!encrypted && status === "ready" && (
+              <div className="mb-4 rounded-lg border border-red-500/40 bg-red-500/10 p-4 text-sm">
+                <div className="mb-1 flex items-center gap-2 font-medium text-red-500">
+                  <ShieldAlert className="h-4 w-4" /> {t("login.plainTitle")}
+                </div>
+                <p className="text-muted-foreground">{t("login.plainHint")}</p>
               </div>
             )}
             {expired && status === "ready" && (

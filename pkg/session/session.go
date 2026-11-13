@@ -11,7 +11,8 @@ import (
 	"github.com/helviojunior/fmweb/pkg/crypto"
 )
 
-// Session is one browser session.
+// Session is one browser session. Cipher is nil for plaintext sessions
+// (server started with --no-tls: payload encryption disabled).
 type Session struct {
 	ID            string
 	Cipher        *crypto.Cipher
@@ -53,7 +54,7 @@ func NewManager(ttl time.Duration, max int) *Manager {
 	return &Manager{ttl: ttl, max: max, sessions: map[string]*Session{}}
 }
 
-// Create runs the handshake and stores a new session.
+// Create runs the handshake and stores a new encrypted session.
 func (m *Manager) Create(clientPub []byte) (*Session, []byte, error) {
 	sidBytes := make([]byte, 16)
 	if _, err := rand.Read(sidBytes); err != nil {
@@ -63,8 +64,21 @@ func (m *Manager) Create(clientPub []byte) (*Session, []byte, error) {
 	if err != nil {
 		return nil, nil, err
 	}
+	return m.store(hex.EncodeToString(sidBytes), c), serverPub, nil
+}
+
+// CreatePlain stores a new session without payload encryption.
+func (m *Manager) CreatePlain() (*Session, error) {
+	sidBytes := make([]byte, 16)
+	if _, err := rand.Read(sidBytes); err != nil {
+		return nil, err
+	}
+	return m.store(hex.EncodeToString(sidBytes), nil), nil
+}
+
+func (m *Manager) store(id string, c *crypto.Cipher) *Session {
 	now := time.Now()
-	s := &Session{ID: hex.EncodeToString(sidBytes), Cipher: c, Created: now, lastSeen: now}
+	s := &Session{ID: id, Cipher: c, Created: now, lastSeen: now}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.pruneLocked(now)
@@ -72,7 +86,7 @@ func (m *Manager) Create(clientPub []byte) (*Session, []byte, error) {
 		m.evictOldestLocked()
 	}
 	m.sessions[s.ID] = s
-	return s, serverPub, nil
+	return s
 }
 
 // Get returns a live session and refreshes its idle timer.

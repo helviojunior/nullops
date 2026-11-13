@@ -1,13 +1,16 @@
 package cmd
 
 import (
+	"bufio"
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"net"
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -19,6 +22,7 @@ import (
 	"github.com/helviojunior/fmweb/pkg/server"
 	"github.com/helviojunior/fmweb/pkg/tlsutil"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 )
 
 var webOpts = struct {
@@ -26,6 +30,7 @@ var webOpts = struct {
 	Bind       string
 	Port       int
 	NoTLS      bool
+	AssumeYes  bool
 	NoAuth     bool
 	ReadOnly   bool
 	ShowHidden bool
@@ -47,11 +52,17 @@ no user an "admin" account with a random password is created and printed once.`)
 	Example: `
    - fmweb web
    - fmweb web -r /data -b 0.0.0.0 -p 8443
-   - fmweb web -r /srv/share --readonly --exclude '*.key' --exclude node_modules`,
+   - fmweb web -r /srv/share --readonly --exclude '*.key' --exclude node_modules
+   - fmweb web --no-tls          (asks for confirmation: disables payload encryption)`,
 	RunE: runWeb,
 }
 
 func runWeb(cmd *cobra.Command, args []string) error {
+	if webOpts.NoTLS {
+		if err := confirmPlaintext(); err != nil {
+			return err
+		}
+	}
 	if err := assets.Load(); err != nil {
 		return fmt.Errorf("embedded front-end: %w", err)
 	}
@@ -107,6 +118,7 @@ func runWeb(cmd *cobra.Command, args []string) error {
 	srv, err := server.New(server.Config{
 		Addr:       addr,
 		TLS:        cert,
+		Plaintext:  webOpts.NoTLS,
 		NoAuth:     webOpts.NoAuth,
 		ReadOnly:   webOpts.ReadOnly,
 		Title:      webOpts.Title,
@@ -129,6 +141,38 @@ func runWeb(cmd *cobra.Command, args []string) error {
 		log.Info("stopped")
 	}
 	return err
+}
+
+var errAborted = errors.New("aborted by user")
+
+// confirmPlaintext warns that --no-tls also disables the payload encryption
+// and asks the operator to confirm ([y/N], default no).
+func confirmPlaintext() error {
+	w := os.Stderr
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "  \033[31m!! WARNING: --no-tls\033[0m")
+	fmt.Fprintln(w, "  Without TLS the browser does not expose WebCrypto outside localhost, so the")
+	fmt.Fprintln(w, "  \033[1mpayload encryption of the /api channel (ECDH + AES-256-GCM) is DISABLED too.\033[0m")
+	fmt.Fprintln(w, "  That encryption is what keeps a proxy, IDS/IPS or endpoint agent (EDR/DLP)")
+	fmt.Fprintln(w, "  from identifying the traffic: logins, passwords, file names and file contents")
+	fmt.Fprintln(w, "  will travel in CLEAR TEXT and can be read or altered by anyone on the path.")
+	fmt.Fprintln(w)
+	if webOpts.AssumeYes {
+		log.Warn("payload encryption disabled (--no-tls --yes)")
+		return nil
+	}
+	if !term.IsTerminal(int(os.Stdin.Fd())) {
+		return errors.New("refusing to start without encryption: no terminal to confirm (use --yes to accept)")
+	}
+	fmt.Fprint(w, "  Do you want to continue? [y/N] ")
+	line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+	switch strings.ToLower(strings.TrimSpace(line)) {
+	case "y", "yes", "s", "sim":
+		fmt.Fprintln(w)
+		log.Warn("payload encryption disabled by the operator")
+		return nil
+	}
+	return errAborted
 }
 
 func printBanner(root string, https bool, genUser, genPass string, users []string) {
@@ -168,12 +212,15 @@ func printBanner(root string, https bool, genUser, genPass string, users []strin
 		fmt.Printf("  \033[32musers\033[0m     %d configured (fmweb add-user to manage)\n", len(users))
 	}
 	fmt.Println()
-	fmt.Printf("  \033[90mtransport: ECDH P-256 + AES-256-GCM per session (keys in memory only)\033[0m\n")
+	if https {
+		fmt.Printf("  \033[90mtransport: ECDH P-256 + AES-256-GCM per session (keys in memory only)\033[0m\n")
+	}
 	fmt.Printf("  \033[90mfront-end: %d embedded files served from memory\033[0m\n", assets.Count())
 	if https {
 		fmt.Printf("  \033[90mhttps: a self-signed certificate triggers a one-time browser warning\033[0m\n")
 	} else {
-		fmt.Printf("  \033[33mWARNING: TLS disabled. The UI only works on https:// or http://localhost\033[0m\n")
+		fmt.Printf("  \033[31mWARNING: TLS and payload encryption are DISABLED (--no-tls).\033[0m\n")
+		fmt.Printf("  \033[31m         Credentials, file names and contents travel in clear text.\033[0m\n")
 	}
 	fmt.Printf("  \033[90mpress Ctrl+C to stop\033[0m\n\n")
 }
@@ -184,7 +231,8 @@ func init() {
 	f.StringVarP(&webOpts.Root, "root", "r", ".", "Directory to serve")
 	f.StringVarP(&webOpts.Bind, "bind", "b", "127.0.0.1", "Bind address (0.0.0.0 for all interfaces)")
 	f.IntVarP(&webOpts.Port, "port", "p", 8181, "TCP port")
-	f.BoolVar(&webOpts.NoTLS, "no-tls", false, "Serve plain http:// (the UI then only works on localhost)")
+	f.BoolVar(&webOpts.NoTLS, "no-tls", false, "Serve plain http:// and DISABLE the payload encryption (asks for confirmation)")
+	f.BoolVarP(&webOpts.AssumeYes, "yes", "y", false, "Do not ask for confirmation (with --no-tls)")
 	f.BoolVar(&webOpts.NoAuth, "no-auth", false, "Disable authentication (dangerous)")
 	f.BoolVar(&webOpts.ReadOnly, "readonly", false, "Serve read-only for every user")
 	f.BoolVar(&webOpts.ShowHidden, "show-hidden", false, "Show dotfiles")

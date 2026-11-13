@@ -39,8 +39,11 @@ const (
 
 // Config is the server configuration.
 type Config struct {
-	Addr       string
-	TLS        *tls.Certificate // nil = plain http
+	Addr string
+	TLS  *tls.Certificate // nil = plain http
+	// Plaintext disables the payload encryption of /api (no WebCrypto). Only
+	// used with --no-tls, after the operator explicitly confirmed it.
+	Plaintext  bool
 	NoAuth     bool
 	ReadOnly   bool
 	Title      string
@@ -74,7 +77,7 @@ func New(cfg Config) (*Server, error) {
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/", s.handleAPI)
-	mux.Handle("/", assets.Handler())
+	mux.Handle("/", logAccess(assets.Handler()))
 	s.http = &http.Server{
 		Addr:              cfg.Addr,
 		Handler:           securityHeaders(mux),
@@ -151,6 +154,10 @@ func writeErr(w http.ResponseWriter, status int, msg string) {
 }
 
 func writeSealed(w http.ResponseWriter, sess *session.Session, v any) {
+	if sess.Cipher == nil {
+		writeJSON(w, 200, v)
+		return
+	}
 	env, err := sess.Cipher.SealJSON(v)
 	if err != nil {
 		writeErr(w, 500, "Internal error")
@@ -208,6 +215,9 @@ func (s *Server) handleAPI(w http.ResponseWriter, r *http.Request) {
 		s.login(w, r, sess, body)
 		return
 	case "logout":
+		if ok, u, _ := sess.Auth(); ok {
+			log.Info("logout", "user", u, "ip", clientIP(r))
+		}
 		s.sessions.Destroy(sess.ID)
 		writeSealed(w, sess, map[string]any{"ok": true})
 		return
@@ -225,13 +235,14 @@ func (s *Server) handleAPI(w http.ResponseWriter, r *http.Request) {
 	caller := api.Caller{Username: user, ReadOnly: ro || s.cfg.ReadOnly}
 	switch action {
 	case "download":
-		s.download(w, sess, plain)
+		s.download(w, r, sess, plain, caller)
 		return
 	case "upload":
-		s.upload(w, sess, plain, caller)
+		s.upload(w, r, sess, plain, caller)
 		return
 	}
 	res, err := s.api.Dispatch(action, plain, caller)
+	auditAction(r, user, action, plain, err)
 	if err != nil {
 		// Application errors travel inside the encrypted body with HTTP 200;
 		// status codes are reserved for transport/auth failures.
@@ -243,13 +254,16 @@ func (s *Server) handleAPI(w http.ResponseWriter, r *http.Request) {
 		writeSealed(w, sess, map[string]any{"ok": false, "error": msg})
 		return
 	}
-	if api.IsWrite(action) {
-		log.Info("action", "user", user, "op", action, "ip", clientIP(r))
-	}
 	writeSealed(w, sess, map[string]any{"ok": true, "result": res})
 }
 
 func (s *Server) open(sess *session.Session, body []byte) ([]byte, error) {
+	if sess.Cipher == nil {
+		if len(body) > 0 && !json.Valid(body) {
+			return nil, errors.New("invalid json")
+		}
+		return body, nil
+	}
 	var env crypto.Envelope
 	if err := json.Unmarshal(body, &env); err != nil {
 		return nil, err
@@ -265,28 +279,48 @@ func (s *Server) handshake(w http.ResponseWriter, body []byte) {
 	var req struct {
 		ClientPub string `json:"client_pub"`
 	}
-	if err := json.Unmarshal(body, &req); err != nil {
-		writeErr(w, 400, "Malformed handshake")
-		return
+	if len(body) > 0 {
+		if err := json.Unmarshal(body, &req); err != nil {
+			writeErr(w, 400, "Malformed handshake")
+			return
+		}
 	}
-	pub, err := crypto.B64.DecodeString(req.ClientPub)
-	if err != nil {
-		writeErr(w, 400, "Malformed handshake")
-		return
-	}
-	sess, serverPub, err := s.sessions.Create(pub)
-	if err != nil {
-		writeErr(w, 400, "Handshake failed")
-		return
+
+	var sess *session.Session
+	resp := map[string]any{"auth_required": !s.cfg.NoAuth}
+	if s.cfg.Plaintext {
+		var err error
+		if sess, err = s.sessions.CreatePlain(); err != nil {
+			writeErr(w, 500, "Handshake failed")
+			return
+		}
+		resp["encrypted"] = false
+	} else {
+		if req.ClientPub == "" {
+			// The browser has no WebCrypto (not a secure context).
+			writeJSON(w, 400, map[string]any{"ok": false, "error": "Secure context required",
+				"code": "secure_context", "encrypted": true})
+			return
+		}
+		pub, err := crypto.B64.DecodeString(req.ClientPub)
+		if err != nil {
+			writeErr(w, 400, "Malformed handshake")
+			return
+		}
+		var serverPub []byte
+		sess, serverPub, err = s.sessions.Create(pub)
+		if err != nil {
+			writeErr(w, 400, "Handshake failed")
+			return
+		}
+		resp["encrypted"] = true
+		resp["server_pub"] = crypto.B64.EncodeToString(serverPub)
 	}
 	if s.cfg.NoAuth {
 		sess.SetAuth("anonymous", s.cfg.ReadOnly)
 	}
-	writeJSON(w, 200, map[string]any{
-		"session_id":    sess.ID,
-		"server_pub":    crypto.B64.EncodeToString(serverPub),
-		"auth_required": !s.cfg.NoAuth,
-	})
+	resp["session_id"] = sess.ID
+	writeJSON(w, 200, resp)
 }
 
 func (s *Server) login(w http.ResponseWriter, r *http.Request, sess *session.Session, body []byte) {
@@ -304,8 +338,9 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request, sess *session.Ses
 		Password string `json:"password"`
 	}
 	_ = json.Unmarshal(plain, &req)
-	ip := clientIP(r)
+	ip, ua := clientIP(r), userAgent(r)
 	if wait := s.limiter.blocked(ip); wait > 0 {
+		log.Warn("login blocked (too many attempts)", "user", req.Username, "ip", ip, "ua", ua)
 		writeSealed(w, sess, map[string]any{"ok": false, "error": "Too many attempts",
 			"retry_after": int(wait.Seconds()) + 1})
 		return
@@ -313,34 +348,42 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request, sess *session.Ses
 	u, ok := s.cfg.Users.Verify(req.Username, req.Password)
 	if !ok {
 		s.limiter.fail(ip)
-		log.Warn("login failed", "user", req.Username, "ip", ip)
+		log.Warn("login failed", "user", req.Username, "ip", ip, "ua", ua)
 		writeSealed(w, sess, map[string]any{"ok": false, "error": "Invalid credentials"})
 		return
 	}
 	s.limiter.reset(ip)
 	ro := u.ReadOnly || s.cfg.ReadOnly
 	sess.SetAuth(u.Username, ro)
-	log.Info("login", "user", u.Username, "ip", ip)
+	log.Info("login", "user", u.Username, "ip", ip, "ua", ua, "readonly", ro)
 	writeSealed(w, sess, map[string]any{"ok": true, "username": u.Username, "readonly": ro})
 }
 
-func (s *Server) download(w http.ResponseWriter, sess *session.Session, plain []byte) {
+func (s *Server) download(w http.ResponseWriter, r *http.Request, sess *session.Session, plain []byte, c api.Caller) {
 	var req struct {
 		Path string `json:"path"`
 	}
 	_ = json.Unmarshal(plain, &req)
 	fh, st, err := s.cfg.FS.OpenFile(req.Path)
 	if err != nil {
+		log.Warn("download failed", "user", c.Username, "ip", clientIP(r), "path", "/"+req.Path, "err", err.Error())
 		writeErr(w, 404, err.Error())
 		return
 	}
 	defer fh.Close()
+	log.Info("download", "user", c.Username, "ip", clientIP(r), "path", "/"+req.Path, "size", st.Size())
 	size := st.Size()
 	frames := (size + downloadChunk - 1) / downloadChunk
 	h := w.Header()
 	h.Set("Content-Type", "application/octet-stream")
 	h.Set("Cache-Control", "no-store")
 	h.Set("X-File-Size", strconv.FormatInt(size, 10))
+	if sess.Cipher == nil {
+		h.Set("Content-Length", strconv.FormatInt(size, 10))
+		w.WriteHeader(200)
+		io.CopyN(w, fh, size)
+		return
+	}
 	h.Set("Content-Length", strconv.FormatInt(size+frames*32, 10))
 	w.WriteHeader(200)
 	buf := make([]byte, downloadChunk)
@@ -359,7 +402,7 @@ func (s *Server) download(w http.ResponseWriter, sess *session.Session, plain []
 	}
 }
 
-func (s *Server) upload(w http.ResponseWriter, sess *session.Session, plain []byte, c api.Caller) {
+func (s *Server) upload(w http.ResponseWriter, r *http.Request, sess *session.Session, plain []byte, c api.Caller) {
 	if c.ReadOnly {
 		writeSealed(w, sess, map[string]any{"ok": false, "error": "Read-only mode"})
 		return
@@ -383,11 +426,12 @@ func (s *Server) upload(w http.ResponseWriter, sess *session.Session, plain []by
 	last := req.Last == nil || *req.Last
 	e, received, err := s.cfg.FS.UploadChunk(req.Path, req.Name, req.Offset, data, last, s.cfg.AllowedExt)
 	if err != nil {
+		log.Warn("upload failed", "user", c.Username, "ip", clientIP(r), "path", "/"+joinRel(req.Path, req.Name), "err", err.Error())
 		writeSealed(w, sess, map[string]any{"ok": false, "error": err.Error()})
 		return
 	}
 	if e != nil {
-		log.Info("upload", "user", c.Username, "file", e.Path, "size", e.Size)
+		log.Info("upload", "user", c.Username, "ip", clientIP(r), "path", "/"+e.Path, "size", e.Size)
 		writeSealed(w, sess, map[string]any{"ok": true, "result": e})
 		return
 	}

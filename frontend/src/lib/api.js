@@ -19,6 +19,7 @@ export class ApiClient {
   constructor() {
     this.crypto = new SessionCrypto();
     this.authRequired = true;
+    this.encrypted = true;
   }
 
   headers() {
@@ -28,6 +29,7 @@ export class ApiClient {
   async connect() {
     const info = await this.crypto.handshake();
     this.authRequired = info.authRequired;
+    this.encrypted = info.encrypted;
     return info;
   }
 
@@ -44,8 +46,10 @@ export class ApiClient {
     } catch {
       throw new ApiError("Invalid server response", resp.status);
     }
-    // Transport/auth errors come back in clear text.
-    if (!data.iv) throw new ApiError(data.error || "Request failed", resp.status);
+    // Transport/auth errors come back in clear text (non-200 status).
+    if (!resp.ok || (!this.crypto.plain && !data.iv)) {
+      throw new ApiError(data.error || "Request failed", resp.status);
+    }
     return this.crypto.decryptJson(data);
   }
 

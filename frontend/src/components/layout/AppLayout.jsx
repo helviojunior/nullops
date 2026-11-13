@@ -1,5 +1,5 @@
 import { Navigate, Outlet } from "react-router-dom";
-import { FolderLock, LogOut, Moon, Sun, Languages, ShieldCheck, Loader2 } from "lucide-react";
+import { FolderLock, LogOut, Moon, Sun, Languages, ShieldCheck, ShieldOff, Loader2 } from "lucide-react";
 import { useAuth } from "contexts/AuthContext";
 import { useI18n, LANGUAGE_OPTIONS } from "i18n";
 import { Button } from "components/ui/button";
@@ -41,7 +41,7 @@ export function ThemeToggle({ darkMode, setDarkMode }) {
 }
 
 export default function AppLayout({ darkMode, setDarkMode }) {
-  const { user, status, logout } = useAuth();
+  const { user, status, logout, encrypted } = useAuth();
   const { t, tf } = useI18n();
 
   if (!user) {
@@ -85,8 +85,17 @@ export default function AppLayout({ darkMode, setDarkMode }) {
       </main>
 
       <footer className="flex h-8 shrink-0 items-center gap-3 border-t border-border bg-card px-4 text-xs text-muted-foreground">
-        <ShieldCheck className="h-3.5 w-3.5 text-emerald-500" />
-        <span className="truncate">{t("app.secure")}</span>
+        {encrypted ? (
+          <>
+            <ShieldCheck className="h-3.5 w-3.5 text-emerald-500" />
+            <span className="truncate">{t("app.secure")}</span>
+          </>
+        ) : (
+          <>
+            <ShieldOff className="h-3.5 w-3.5 text-red-500" />
+            <span className="truncate text-red-500">{t("app.plain")}</span>
+          </>
+        )}
         <span className="ml-auto">{tf("footer.version", { v: user.version })}</span>
       </footer>
     </div>

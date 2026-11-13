@@ -21,10 +21,33 @@ fmweb web -r /data -b 0.0.0.0 -p 8443
 | --- | --- |
 | `fmweb create-tls` | Creates a self-signed certificate (`--host`, `--days`, `--force`) or imports one (`--cert`, `--key`) |
 | `fmweb add-user`   | Adds or updates a user (`-u`, `-p` / prompt / `--generate`, `--readonly`, `--update`) |
-| `fmweb web`        | Starts the server (`-r` root, `-b` bind, `-p` port, `--readonly`, `--show-hidden`, `--exclude`, `--allow-ext`, `--no-tls`, `--no-auth`) |
+| `fmweb web`        | Starts the server (`-r` root, `-b` bind, `-p` port, `--readonly`, `--show-hidden`, `--exclude`, `--allow-ext`, `--no-tls`, `-y`, `--no-auth`) |
 | `fmweb version`    | Version and build information |
 
 Global flags: `--data-dir` (default `./fmweb`), `-D` debug, `-q` quiet.
+
+### `--no-tls`: no payload encryption
+
+Without TLS the browser only exposes WebCrypto on `localhost`, so `--no-tls`
+also **disables the payload encryption** of `/api`. That encryption is what
+keeps proxies, IDS/IPS and EDR/DLP agents from identifying the traffic: with it
+off, logins, passwords, file names and contents travel in clear text.
+
+The console shows this warning and asks `Do you want to continue? [y/N]`
+(the default is no). Without a terminal the server refuses to start unless
+`-y/--yes` is passed. The UI shows a red banner on the login screen and in the
+footer. A server running with TLS refuses unencrypted clients, so a client
+cannot downgrade the session to clear text.
+
+### Console log
+
+| Event | Fields |
+| --- | --- |
+| `access` (GET of `/` and SPA routes) | `ip`, `path`, `ua` |
+| `login` / `login failed` / `login blocked` / `logout` | `user`, `ip`, `ua` (login) |
+| `upload`, `download`, `open`, `edit`, `create`, `mkdir`, `rename`, `delete`, `copy`, `move`, `chmod`, `zip`, `tar`, `extract` | `user`, `ip`, `path(s)`, plus `size` / `dest` / `mode` depending on the action |
+
+Failures are logged as `WARN … failed` with `err`. Listing and search are not logged.
 
 ### User data (`./fmweb`)
 
@@ -65,7 +88,7 @@ Binaries go to `./build/fmweb_<os>_<arch>[.exe]`. `VER=1.2.3 make all` sets the 
 ### Front-end development
 
 ```bash
-fmweb web --no-tls -p 8181          # API on http://127.0.0.1:8181
+fmweb web --no-tls -y -p 8181       # API on http://127.0.0.1:8181 (no encryption)
 cd frontend && npm install && npm run dev   # Vite with a proxy to /api
 ```
 

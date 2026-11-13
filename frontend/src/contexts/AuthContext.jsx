@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { ApiClient, ApiError, isSessionError } from "lib/api";
-import { secureContextAvailable } from "lib/crypto";
+import { InsecureContextError } from "lib/crypto";
 
 /**
  * Owns the encrypted channel. The session key lives only in this JS context:
@@ -15,6 +15,7 @@ export function AuthProvider({ children }) {
   const [status, setStatus] = useState("connecting"); // connecting | ready | error | insecure
   const [user, setUser] = useState(null); // {username, readonly, title, version, auth}
   const [expired, setExpired] = useState(false);
+  const [encrypted, setEncrypted] = useState(true);
 
   const loadInfo = useCallback(async (client) => {
     const info = await client.call("info", {});
@@ -25,20 +26,21 @@ export function AuthProvider({ children }) {
 
   // Handshake with retries (absorbs a server that is still starting).
   const connect = useCallback(async () => {
-    if (!secureContextAvailable()) {
-      setStatus("insecure");
-      return null;
-    }
     setStatus("connecting");
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
         const client = new ApiClient();
         await client.connect();
         clientRef.current = client;
+        setEncrypted(client.encrypted);
         if (!client.authRequired) await loadInfo(client);
         setStatus("ready");
         return client;
-      } catch {
+      } catch (err) {
+        if (err instanceof InsecureContextError) {
+          setStatus("insecure");
+          return null;
+        }
         await sleep(1500);
       }
     }
@@ -99,6 +101,7 @@ export function AuthProvider({ children }) {
     status,
     user,
     expired,
+    encrypted,
     authRequired: clientRef.current ? clientRef.current.authRequired : true,
     client: () => clientRef.current,
     connect,
