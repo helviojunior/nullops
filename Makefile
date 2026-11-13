@@ -46,7 +46,7 @@ frontend:	   ## Build the web front-end (html/js/css) into frontend/dist
 	rm -rf ./frontend/dist ; \
 	SCRIPT=build ; if [ "$(OBFUSCATE_JS)" = "1" ]; then SCRIPT=build:obfuscated ; fi ; \
 	if [ "$(FRONTEND_BUILDER)" = "local" ]; then \
-		cd $(FRONTEND_DIR) && (npm ci --no-audit --no-fund || npm install --no-audit --no-fund) && npm run $$SCRIPT || exit 1 ; \
+		( cd $(FRONTEND_DIR) && (npm ci --no-audit --no-fund || npm install --no-audit --no-fund) && npm run $$SCRIPT ) || exit 1 ; \
 	else \
 		DOCKER_BUILDKIT=1 docker build --build-arg BUILD_SCRIPT=$$SCRIPT --target export --output type=local,dest=$(FRONTEND_DIST) $(FRONTEND_DIR) || exit 1 ; \
 	fi ; \
@@ -68,7 +68,7 @@ test:		   ## Run Go unit tests (needs the asset blob: run `make assets` once)
 
 test-frontend:	   ## Run the front-end unit tests (vitest)
 	@if [ "$(FRONTEND_BUILDER)" = "local" ]; then \
-		cd $(FRONTEND_DIR) && (npm ci --no-audit --no-fund || npm install --no-audit --no-fund) && npm test || exit 1 ; \
+		( cd $(FRONTEND_DIR) && (npm ci --no-audit --no-fund || npm install --no-audit --no-fund) && npm test ) || exit 1 ; \
 	else \
 		DOCKER_BUILDKIT=1 docker build --target test $(FRONTEND_DIR) || exit 1 ; \
 	fi
