@@ -160,7 +160,7 @@ jobs:
     #    sarif_file: gosec-results.sarif
 
     - name: Check for hardcoded secrets
-      uses: trufflesecurity/trufflehog@d411fff7b8879a62509f3fa98c07f247ac089a51
+      uses: trufflesecurity/trufflehog@ea68ca03c865c5f324e86e849ced20ed3cf9dbbb
       with:
         path: ./
         base: ${{ github.event.pull_request.base.sha || github.event.before }}
