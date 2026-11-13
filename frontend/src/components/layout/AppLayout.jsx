@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Navigate, Outlet, useLocation } from "react-router-dom";
+import { Link, Navigate, Outlet, useLocation } from "react-router-dom";
 import {
   FolderLock,
   LogOut,
@@ -11,6 +11,7 @@ import {
   Loader2,
   PanelLeftOpen,
   PanelLeftClose,
+  UserRound,
 } from "lucide-react";
 import { useAuth } from "contexts/AuthContext";
 import { TreeProvider } from "contexts/TreeContext";
@@ -71,10 +72,10 @@ function loadPanel() {
 
 // Folder being shown: /files/<dir> or the parent of /edit/<file>.
 function currentFolder(pathname) {
-  const m = pathname.match(/^\/(files|edit)(?:\/(.*))?$/);
+  const m = pathname.match(/^\/(files|edit|view)(?:\/(.*))?$/);
   if (!m) return "";
   const p = routeToPath(m[2] || "");
-  return m[1] === "edit" ? parentPath(p) : p;
+  return m[1] === "files" ? p : parentPath(p);
 }
 
 export default function AppLayout({ darkMode, setDarkMode }) {
@@ -130,7 +131,14 @@ export default function AppLayout({ darkMode, setDarkMode }) {
           <ThemeToggle darkMode={darkMode} setDarkMode={setDarkMode} />
           {user.auth && (
             <>
-              <span className="hidden md:inline text-sm text-muted-foreground">{user.username}</span>
+              <Link
+                to="/account"
+                title={t("account.title")}
+                className="inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
+                <UserRound className="h-4 w-4" />
+                <span className="hidden md:inline">{user.username}</span>
+              </Link>
               <Button variant="ghost" size="sm" onClick={logout} title={t("nav.logout")}>
                 <LogOut className="h-4 w-4" />
                 <span className="hidden sm:inline">{t("nav.logout")}</span>

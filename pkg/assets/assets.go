@@ -122,8 +122,9 @@ func Handler() http.Handler {
 		}
 		f, ok := files[name]
 		if !ok {
-			// SPA fallback: client-side routes have no extension.
-			if path.Ext(name) != "" {
+			// SPA fallback: every client-side route (/files/…, /edit/a.txt,
+			// /view/b.pdf) gets the app shell; only missing build assets 404.
+			if !isAppRoute(name) {
 				http.NotFound(w, r)
 				return
 			}
@@ -147,4 +148,31 @@ func Handler() http.Handler {
 		}
 		http.ServeContent(w, r, "", modTime, bytes.NewReader(body))
 	})
+}
+
+// IsPageRequest reports whether a GET for urlPath is a page load (served by
+// the app shell) rather than a static build asset.
+func IsPageRequest(urlPath string) bool {
+	name := strings.TrimPrefix(path.Clean("/"+urlPath), "/")
+	if strings.HasPrefix(name, "assets/") {
+		return false
+	}
+	if _, isFile := files[name]; isFile {
+		return name == "index.html"
+	}
+	return isAppRoute(name)
+}
+
+// isAppRoute: client-side routes of the SPA. File-like names outside them
+// (favicon.ico, robots.txt, …) are a plain 404, not the app shell.
+func isAppRoute(name string) bool {
+	if strings.HasPrefix(name, "assets/") {
+		return false
+	}
+	for _, p := range []string{"files/", "edit/", "view/"} {
+		if strings.HasPrefix(name, p) {
+			return true
+		}
+	}
+	return path.Ext(name) == ""
 }

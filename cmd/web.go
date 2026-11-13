@@ -39,6 +39,9 @@ var webOpts = struct {
 	AllowExt   []string
 	Title      string
 	SessionTTL int
+	AuditLog   string
+	Trusted    []string
+	MaxUpload  string
 }{}
 
 var webCmd = &cobra.Command{
@@ -66,6 +69,21 @@ func runWeb(cmd *cobra.Command, args []string) error {
 	}
 	if err := assets.Load(); err != nil {
 		return fmt.Errorf("embedded front-end: %w", err)
+	}
+	log.EnableTimestamps()
+	trusted, err := server.ParseTrustedProxies(webOpts.Trusted)
+	if err != nil {
+		return fmt.Errorf("--trusted-proxy: %w", err)
+	}
+	maxUpload, err := parseSize(webOpts.MaxUpload)
+	if err != nil {
+		return fmt.Errorf("--max-upload: %w", err)
+	}
+	if webOpts.AuditLog != "" {
+		if err := log.OpenAuditFile(webOpts.AuditLog); err != nil {
+			return fmt.Errorf("--audit-log: %w", err)
+		}
+		defer log.CloseAuditFile()
 	}
 	fsys, err := fileops.New(webOpts.Root, fileops.Options{
 		ShowHidden: webOpts.ShowHidden, Exclude: webOpts.Exclude,
@@ -128,17 +146,19 @@ func runWeb(cmd *cobra.Command, args []string) error {
 
 	addr := net.JoinHostPort(webOpts.Bind, strconv.Itoa(webOpts.Port))
 	srv, err := server.New(server.Config{
-		Addr:       addr,
-		TLS:        cert,
-		Plaintext:  webOpts.NoTLS,
-		NoAuth:     webOpts.NoAuth,
-		ReadOnly:   webOpts.ReadOnly,
-		Title:      webOpts.Title,
-		SessionTTL: time.Duration(webOpts.SessionTTL) * time.Second,
-		Sessions:   sessStore,
-		AllowedExt: webOpts.AllowExt,
-		Users:      store,
-		FS:         fsys,
+		Addr:           addr,
+		TLS:            cert,
+		Plaintext:      webOpts.NoTLS,
+		NoAuth:         webOpts.NoAuth,
+		ReadOnly:       webOpts.ReadOnly,
+		Title:          webOpts.Title,
+		SessionTTL:     time.Duration(webOpts.SessionTTL) * time.Second,
+		Sessions:       sessStore,
+		TrustedProxies: trusted,
+		MaxUpload:      maxUpload,
+		AllowedExt:     webOpts.AllowExt,
+		Users:          store,
+		FS:             fsys,
 	})
 	if err != nil {
 		return err
@@ -256,5 +276,36 @@ func init() {
 	f.StringArrayVar(&webOpts.Exclude, "exclude", nil, "Hide entries matching this glob (repeatable)")
 	f.StringSliceVar(&webOpts.AllowExt, "allow-ext", nil, "Only allow uploads with these extensions (e.g. pdf,txt)")
 	f.StringVar(&webOpts.Title, "title", "Web File Manager", "Title shown in the UI")
+	f.StringVar(&webOpts.AuditLog, "audit-log", "", "Also write audit events (access, login, file operations) as JSON lines to this file")
+	f.StringSliceVar(&webOpts.Trusted, "trusted-proxy", nil, "IP/CIDR of a reverse proxy whose X-Forwarded-For / X-Real-IP is trusted (repeatable)")
+	f.StringVar(&webOpts.MaxUpload, "max-upload", "0", "Maximum size of one uploaded file, e.g. 500M, 2G (0 = unlimited)")
 	f.IntVar(&webOpts.SessionTTL, "session-ttl", 12*3600, "Session lifetime in seconds after login (default 12h); sessions are kept in <data-dir>/sessions.db")
+}
+
+// parseSize parses "0", "1024", "500K", "500M", "2G", "1T" (binary units).
+func parseSize(v string) (int64, error) {
+	v = strings.TrimSpace(strings.ToUpper(v))
+	v = strings.TrimSuffix(strings.TrimSuffix(v, "B"), "I")
+	if v == "" {
+		return 0, nil
+	}
+	mult := int64(1)
+	switch v[len(v)-1] {
+	case 'K':
+		mult = 1 << 10
+	case 'M':
+		mult = 1 << 20
+	case 'G':
+		mult = 1 << 30
+	case 'T':
+		mult = 1 << 40
+	}
+	if mult > 1 {
+		v = v[:len(v)-1]
+	}
+	n, err := strconv.ParseInt(strings.TrimSpace(v), 10, 64)
+	if err != nil || n < 0 {
+		return 0, fmt.Errorf("invalid size %q", v)
+	}
+	return n * mult, nil
 }

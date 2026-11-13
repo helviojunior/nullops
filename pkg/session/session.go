@@ -32,6 +32,54 @@ type Session struct {
 	authenticated bool
 	username      string
 	readonly      bool
+
+	persisted bool      // stored in the Store (authenticated)
+	checked   time.Time // last time the Store still had it (revocation)
+
+	// multi-step login and MFA enrollment state (memory only)
+	login      *LoginState
+	mfaPending string
+}
+
+// LoginState tracks a login in progress: user -> [MFA] -> password.
+type LoginState struct {
+	Username string
+	Fake     bool // the user does not exist (deception: we pretend it has MFA)
+	NeedMFA  bool
+	MFAOK    bool
+	Expires  time.Time
+}
+
+// Login returns a copy of the login state (nil when none / expired).
+func (s *Session) Login() *LoginState {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.login == nil || time.Now().After(s.login.Expires) {
+		return nil
+	}
+	c := *s.login
+	return &c
+}
+
+// SetLogin replaces the login state (nil clears it).
+func (s *Session) SetLogin(l *LoginState) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.login = l
+}
+
+// MFAPending returns / sets a TOTP secret being enrolled.
+func (s *Session) MFAPending() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.mfaPending
+}
+
+// SetMFAPending stores a TOTP secret being enrolled ("" clears it).
+func (s *Session) SetMFAPending(secret string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.mfaPending = secret
 }
 
 // Auth returns the authentication state.
@@ -153,12 +201,16 @@ func (m *Manager) Authenticate(s *Session, user string, readonly bool, ip, ua st
 	now := time.Now()
 	s.mu.Lock()
 	s.authenticated, s.username, s.readonly = true, user, readonly
+	s.login = nil
 	s.expires = now.Add(m.ttl)
 	exp := s.expires
 	s.mu.Unlock()
 	if m.store == nil {
 		return nil
 	}
+	s.mu.Lock()
+	s.persisted, s.checked = true, now
+	s.mu.Unlock()
 	rec := &Record{
 		IDHash:    HashID(s.ID),
 		Username:  user,
@@ -190,7 +242,7 @@ func (m *Manager) Get(id string) *Session {
 	s, ok := m.sessions[id]
 	m.mu.Unlock()
 	if ok {
-		if s.expired(now) {
+		if s.expired(now) || m.revoked(s, now) {
 			m.Destroy(id)
 			return nil
 		}
@@ -230,7 +282,8 @@ func (m *Manager) load(id string, now time.Time) *Session {
 		return nil
 	}
 	s := &Session{ID: id, Created: rec.CreatedAt, expires: rec.ExpiresAt,
-		authenticated: true, username: rec.Username, readonly: rec.ReadOnly}
+		authenticated: true, username: rec.Username, readonly: rec.ReadOnly,
+		persisted: true, checked: now}
 	if rec.Encrypted {
 		key, err := unwrapKey(id, rec.WrappedKey)
 		if err != nil {
@@ -244,6 +297,30 @@ func (m *Manager) load(id string, now time.Time) *Session {
 		s.Cipher = c
 	}
 	return s
+}
+
+// revocationCheck is how often a cached session is checked against the store
+// (`fmweb sessions revoke` deletes rows while the server runs).
+var revocationCheck = 5 * time.Second
+
+// SetRevocationCheck changes how often cached sessions are re-validated (tests).
+func SetRevocationCheck(d time.Duration) { revocationCheck = d }
+
+func (m *Manager) revoked(s *Session, now time.Time) bool {
+	if m.store == nil {
+		return false
+	}
+	s.mu.Lock()
+	due := s.persisted && now.Sub(s.checked) > revocationCheck
+	if due {
+		s.checked = now
+	}
+	s.mu.Unlock()
+	if !due {
+		return false
+	}
+	rec, err := m.store.Load(HashID(s.ID))
+	return err == nil && rec == nil
 }
 
 // Destroy removes a session from memory and from the store.

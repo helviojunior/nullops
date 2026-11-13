@@ -12,6 +12,12 @@ const AuthContext = createContext(null);
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+function stepError(out) {
+  const e = new ApiError(out.error || "Error", 200);
+  e.retryAfter = out.retry_after;
+  return e;
+}
+
 export function AuthProvider({ children }) {
   const clientRef = useRef(null);
   const [status, setStatus] = useState("connecting"); // connecting | ready | error | insecure
@@ -74,34 +80,50 @@ export function AuthProvider({ children }) {
     })();
   }, [connect, resume]);
 
-  const login = useCallback(
-    async (username, password) => {
+  // Step 1: username. Returns "mfa" or "password".
+  const loginStart = useCallback(
+    async (username) => {
       let client = clientRef.current;
       if (!client) client = await connect();
       if (!client) throw new ApiError("Service unavailable", 0);
       let out;
       try {
-        out = await client.login(username, password);
+        out = await client.loginStart(username);
       } catch (err) {
-        if (isSessionError(err)) {
-          // the server forgot our session (restart / TTL): new handshake
-          client = await connect();
-          if (!client) throw err;
-          out = await client.login(username, password);
-        } else {
-          throw err;
-        }
+        if (!isSessionError(err)) throw err;
+        // the server forgot our session (restart / TTL): new handshake
+        client = await connect();
+        if (!client) throw err;
+        out = await client.loginStart(username);
       }
-      if (!out.ok) {
-        const e = new ApiError(out.error || "Invalid credentials", 200);
-        e.retryAfter = out.retry_after;
-        throw e;
-      }
+      if (!out.ok) throw stepError(out);
+      if (out.next === "done") return loadInfo(client).then(() => "done");
+      return out.next;
+    },
+    [connect, loadInfo]
+  );
+
+  // Step 2 (only with MFA): TOTP code. Returns "password".
+  const loginMFA = useCallback(async (code) => {
+    const client = clientRef.current;
+    if (!client) throw new ApiError("Login expired", 200);
+    const out = await client.loginMFA(code);
+    if (!out.ok) throw stepError(out);
+    return out.next;
+  }, []);
+
+  // Step 3: password.
+  const loginPassword = useCallback(
+    async (username, password) => {
+      const client = clientRef.current;
+      if (!client) throw new ApiError("Login expired", 200);
+      const out = await client.loginPassword(username, password);
+      if (!out.ok) throw stepError(out);
       setExpired(false);
       await saveSession({ ...client.crypto.snapshot(), expiresAt: out.expires_at || 0 });
       return loadInfo(client);
     },
-    [connect, loadInfo]
+    [loadInfo]
   );
 
   const logout = useCallback(async () => {
@@ -130,7 +152,9 @@ export function AuthProvider({ children }) {
     authRequired: clientRef.current ? clientRef.current.authRequired : true,
     client: () => clientRef.current,
     connect,
-    login,
+    loginStart,
+    loginMFA,
+    loginPassword,
     logout,
     sessionLost,
   };

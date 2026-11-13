@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
+  ArrowDown,
   ArrowUp,
   ChevronRight,
+  Eye,
+  ListFilter,
   Copy,
   Download,
   FileArchive,
@@ -29,8 +32,11 @@ import { useI18n } from "i18n";
 import { Button } from "components/ui/button";
 import { Input } from "components/ui/input";
 import { Checkbox } from "components/ui/checkbox";
+import { ActionMenu } from "components/ui/menu";
 import FileIcon from "components/files/FileIcon";
 import Transfers from "components/files/Transfers";
+import FolderPicker from "components/files/FolderPicker";
+import { canDrop, getDragPaths, isInternalDrag, setDragPaths, useTransfer } from "lib/useTransfer";
 import { errorText } from "lib/errors";
 import {
   baseName,
@@ -38,7 +44,12 @@ import {
   humanSize,
   isArchive,
   isEditable,
+  isPreviewable,
   joinPath,
+  previewKind,
+  sortEntries,
+  typeGroup,
+  TYPE_FILTERS,
   parentPath,
   pathToRoute,
   routeToPath,
@@ -120,6 +131,25 @@ export default function Browser() {
   const [dragging, setDragging] = useState(false);
   const [transfers, setTransfers] = useState([]);
   const fileInput = useRef(null);
+  const transfer = useTransfer();
+  const [picker, setPicker] = useState(null); // {paths, action}
+  const [dropTarget, setDropTarget] = useState(null);
+  const [view, setView] = useState(() => {
+    try {
+      return { sort: "name", dir: "asc", filter: "all", ...JSON.parse(localStorage.getItem("fmweb.view") || "{}") };
+    } catch {
+      return { sort: "name", dir: "asc", filter: "all" };
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem("fmweb.view", JSON.stringify(view));
+    } catch {
+      /* ignore */
+    }
+  }, [view]);
+  const sortBy = (key) =>
+    setView((v) => ({ ...v, sort: key, dir: v.sort === key && v.dir === "asc" ? "desc" : "asc" }));
   // Columns follow the space actually available (the folder panel takes part
   // of the window), not the viewport width.
   const listRef = useRef(null);
@@ -163,7 +193,17 @@ export default function Browser() {
     load();
   }, [load]);
 
-  const entries = useMemo(() => (results ? results : listing?.entries || []), [results, listing]);
+  useEffect(() => {
+    const onChanged = () => load();
+    window.addEventListener("fmweb:changed", onChanged);
+    return () => window.removeEventListener("fmweb:changed", onChanged);
+  }, [load]);
+
+  const allEntries = useMemo(() => (results ? results : listing?.entries || []), [results, listing]);
+  const entries = useMemo(() => {
+    const filtered = view.filter === "all" ? allEntries : allEntries.filter((e) => typeGroup(e) === view.filter);
+    return sortEntries(filtered, view.sort, view.dir);
+  }, [allEntries, view]);
   const selectedPaths = Object.keys(selected).filter((k) => selected[k]);
   const allSelected = entries.length > 0 && selectedPaths.length === entries.length;
 
@@ -198,17 +238,18 @@ export default function Browser() {
     }
     if (probing) return;
     setProbing(entry.path);
-    let isText;
+    let kind;
     try {
       const p = await run((c) => c.call("probe", { path: entry.path }));
-      isText = !!p.is_text;
+      kind = previewKind(p.mime, p.is_text);
     } catch (e) {
       if (e.status === 401) return;
-      isText = isEditable(entry.name);
+      kind = isEditable(entry.name) ? "text" : "other";
     } finally {
       setProbing(null);
     }
-    if (isText) navigate(pathToRoute("/edit", entry.path));
+    if (kind === "text") navigate(pathToRoute("/edit", entry.path));
+    else if (kind === "image" || kind === "pdf") navigate(pathToRoute("/view", entry.path));
     else download(entry);
   };
 
@@ -220,11 +261,29 @@ export default function Browser() {
   };
 
   const download = async (entry) => {
-    const update = track({ kind: "download", name: entry.name, total: entry.size });
+    const name = entry.is_dir ? `${entry.name}.zip` : entry.name;
+    const update = track({ kind: "download", name, total: entry.is_dir ? 0 : entry.size });
     try {
-      const blob = await run((c) => c.download(entry.path, (done, total) => update({ done, total })));
+      const blob = await run((c) => c.download(entry.path, (done, total) => update({ done, total: total || done })));
       update({ state: "done", done: blob.size, total: blob.size });
-      saveBlob(blob, entry.name);
+      saveBlob(blob, name);
+    } catch (e) {
+      update({ state: "error", error: err(e) });
+    }
+  };
+
+  const downloadSelection = async (paths) => {
+    if (paths.length === 1) {
+      const entry = entries.find((x) => x.path === paths[0]);
+      if (entry) return download(entry);
+    }
+    const stamp = new Date().toISOString().slice(0, 19).replace(/\D/g, "").replace(/^(\d{8})/, "$1_");
+    const name = `${baseName(path) || "files"}_${stamp}.zip`;
+    const update = track({ kind: "download", name, total: 0 });
+    try {
+      const blob = await run((c) => c.download({ paths }, (done) => update({ done, total: done })));
+      update({ state: "done", done: blob.size, total: blob.size });
+      saveBlob(blob, name);
     } catch (e) {
       update({ state: "error", error: err(e) });
     }
@@ -282,21 +341,7 @@ export default function Browser() {
       onSubmit: submit((c, v) => c.call("rename", { path: entry.path, name: v.trim() })),
     }).then((v) => v !== null && (toast.success(tf("toast.renamed", { name: v.trim() })), load()));
 
-  const copyMove = (paths, action) =>
-    dialog.prompt({
-      title: tf(action === "copy" ? "dialog.copyTo" : "dialog.moveTo", { n: paths.length }),
-      hint: t("dialog.destHint"),
-      defaultValue: path,
-      placeholder: "/",
-      onSubmit: submit((c, v) => c.call(action, { paths, dest: v.trim().replace(/^\/+|\/+$/g, "") })),
-    }).then((v) => {
-      if (v === null) return;
-      tree.invalidate(v.trim().replace(/^\/+|\/+$/g, ""));
-      paths.forEach((p) => tree.invalidate(parentPath(p)));
-      toast.success(tf(action === "copy" ? "toast.copied" : "toast.moved", { n: paths.length }));
-      setSelected({});
-      load();
-    });
+  const copyMove = (paths, action) => setPicker({ paths, action });
 
   const chmod = (entry) =>
     dialog.prompt({
@@ -386,19 +431,20 @@ export default function Browser() {
     ? {}
     : {
         onDragEnter: (e) => {
-          if (!e.dataTransfer?.types?.includes("Files")) return;
+          if (isInternalDrag(e) || !e.dataTransfer?.types?.includes("Files")) return;
           e.preventDefault();
           dragDepth.current++;
           setDragging(true);
         },
         onDragOver: (e) => {
-          if (e.dataTransfer?.types?.includes("Files")) e.preventDefault();
+          if (!isInternalDrag(e) && e.dataTransfer?.types?.includes("Files")) e.preventDefault();
         },
         onDragLeave: () => {
           dragDepth.current = Math.max(0, dragDepth.current - 1);
           if (!dragDepth.current) setDragging(false);
         },
         onDrop: (e) => {
+          if (isInternalDrag(e)) return;
           e.preventDefault();
           dragDepth.current = 0;
           setDragging(false);
@@ -423,6 +469,21 @@ export default function Browser() {
             className="h-9 pl-8"
           />
         </form>
+        <label className="inline-flex h-9 items-center gap-1.5 rounded-md border border-input px-2 text-sm text-muted-foreground">
+          <ListFilter className="h-4 w-4" />
+          <span className="sr-only">{t("browser.filter")}</span>
+          <select
+            value={view.filter}
+            onChange={(e) => setView((v) => ({ ...v, filter: e.target.value }))}
+            className="bg-transparent text-foreground outline-none"
+          >
+            {TYPE_FILTERS.map((f) => (
+              <option key={f} value={f} className="bg-card">
+                {t("filter." + f)}
+              </option>
+            ))}
+          </select>
+        </label>
         <Button variant="outline" size="sm" onClick={load} title={t("browser.refresh")}>
           <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
         </Button>
@@ -456,6 +517,9 @@ export default function Browser() {
         <div className="flex flex-wrap items-center gap-2 border-b border-border bg-primary/5 px-4 py-2 text-sm">
           <span className="font-medium">{tf("browser.selected", { n: selectedPaths.length })}</span>
           <div className="ml-auto flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" onClick={() => downloadSelection(selectedPaths)}>
+              <Download className="h-4 w-4" /> {t("action.downloadZip")}
+            </Button>
             {!readonly && (
               <>
                 <Button variant="outline" size="sm" onClick={() => archive(selectedPaths, "zip")}>
@@ -520,9 +584,24 @@ export default function Browser() {
                     ariaLabel={t("browser.selectAll")}
                   />
                 </th>
-                <th className="px-2 py-2 font-medium">{t("browser.name")}</th>
-                {showSize && <th className="w-28 px-2 py-2 text-right font-medium">{t("browser.size")}</th>}
-                {showDate && <th className="w-40 px-2 py-2 font-medium">{t("browser.modified")}</th>}
+                <th className="px-2 py-2 font-medium">
+                    <button type="button" onClick={() => sortBy("name")} className="inline-flex items-center gap-1 uppercase hover:text-foreground">
+                      {t("browser.name")}
+                      {view.sort === "name" && (view.dir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />)}
+                    </button>
+                  </th>
+                {showSize && (<th className="w-28 px-2 py-2 text-right font-medium">
+                    <button type="button" onClick={() => sortBy("size")} className="inline-flex items-center gap-1 uppercase hover:text-foreground">
+                      {t("browser.size")}
+                      {view.sort === "size" && (view.dir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />)}
+                    </button>
+                  </th>)}
+                {showDate && (<th className="w-40 px-2 py-2 font-medium">
+                    <button type="button" onClick={() => sortBy("mtime")} className="inline-flex items-center gap-1 uppercase hover:text-foreground">
+                      {t("browser.modified")}
+                      {view.sort === "mtime" && (view.dir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />)}
+                    </button>
+                  </th>)}
                 {showPerms && <th className="w-32 px-2 py-2 font-medium">{t("browser.perms")}</th>}
                 <th className="w-px whitespace-nowrap px-4 py-2 text-right font-medium">{t("browser.actions")}</th>
               </tr>
@@ -546,9 +625,34 @@ export default function Browser() {
                   key={e.path}
                   className={cn(
                     "group cursor-pointer border-b border-border/50 hover:bg-muted/40",
-                    selected[e.path] && "bg-primary/10 hover:bg-primary/15"
+                    selected[e.path] && "bg-primary/10 hover:bg-primary/15",
+                    dropTarget === e.path && "bg-primary/20 outline outline-2 -outline-offset-2 outline-primary"
                   )}
                   onClick={() => open(e)}
+                  draggable={!readonly}
+                  onDragStart={(ev) => {
+                    const paths = selected[e.path] ? selectedPaths : [e.path];
+                    setDragPaths(ev, paths);
+                  }}
+                  onDragOver={(ev) => {
+                    if (!e.is_dir || readonly || !isInternalDrag(ev)) return;
+                    ev.preventDefault();
+                    ev.stopPropagation();
+                    ev.dataTransfer.dropEffect = ev.ctrlKey || ev.altKey ? "copy" : "move";
+                    if (dropTarget !== e.path) setDropTarget(e.path);
+                  }}
+                  onDragLeave={() => dropTarget === e.path && setDropTarget(null)}
+                  onDrop={(ev) => {
+                    if (!e.is_dir || readonly || !isInternalDrag(ev)) return;
+                    ev.preventDefault();
+                    ev.stopPropagation();
+                    setDropTarget(null);
+                    const paths = getDragPaths(ev);
+                    if (paths && canDrop(paths, e.path)) {
+                      transfer(paths, e.path, ev.ctrlKey || ev.altKey).then((ok) => ok && setSelected({}));
+                    }
+                  }}
+                  title={readonly ? undefined : t("dnd.hint")}
                 >
                   <td className="px-4 py-2">
                     <Checkbox
@@ -583,34 +687,33 @@ export default function Browser() {
                   )}
                   <td className="px-4 py-1.5">
                     <div className="flex justify-end gap-0.5 opacity-70 group-hover:opacity-100">
-                      {!e.is_dir && (
-                        <IconButton title={t("action.download")} onClick={() => download(e)}>
-                          <Download className="h-4 w-4" />
+                      {!e.is_dir && isPreviewable(e.name) && (
+                        <IconButton title={t("action.view")} onClick={() => navigate(pathToRoute("/view", e.path))}>
+                          <Eye className="h-4 w-4" />
                         </IconButton>
                       )}
-                      {!e.is_dir && isEditable(e.name) && (
+                      <IconButton
+                        title={e.is_dir ? t("action.downloadZip") : t("action.download")}
+                        onClick={() => download(e)}
+                      >
+                        <Download className="h-4 w-4" />
+                      </IconButton>
+                      {!e.is_dir && isEditable(e.name) && !readonly && (
                         <IconButton title={t("action.edit")} onClick={() => navigate(pathToRoute("/edit", e.path))}>
                           <SquarePen className="h-4 w-4" />
                         </IconButton>
                       )}
-                      {!readonly && (
-                        <>
-                          {!e.is_dir && isArchive(e.name) && (
-                            <IconButton title={t("action.extract")} onClick={() => extract(e)}>
-                              <PackageOpen className="h-4 w-4" />
-                            </IconButton>
-                          )}
-                          <IconButton title={t("action.rename")} onClick={() => rename(e)}>
-                            <Pencil className="h-4 w-4" />
-                          </IconButton>
-                          <IconButton title={t("action.chmod")} onClick={() => chmod(e)}>
-                            <KeyRound className="h-4 w-4" />
-                          </IconButton>
-                          <IconButton title={t("action.delete")} danger onClick={() => remove([e.path])}>
-                            <Trash2 className="h-4 w-4" />
-                          </IconButton>
-                        </>
-                      )}
+                      <ActionMenu
+                        title={t("browser.actions")}
+                        items={[
+                          { label: t("action.extract"), icon: PackageOpen, onClick: () => extract(e), hidden: readonly || e.is_dir || !isArchive(e.name) },
+                          { label: t("action.rename"), icon: Pencil, onClick: () => rename(e), hidden: readonly },
+                          { label: t("action.copy"), icon: Copy, onClick: () => copyMove([e.path], "copy"), hidden: readonly },
+                          { label: t("action.move"), icon: FolderInput, onClick: () => copyMove([e.path], "move"), hidden: readonly },
+                          { label: t("action.chmod"), icon: KeyRound, onClick: () => chmod(e), hidden: readonly },
+                          { label: t("action.delete"), icon: Trash2, onClick: () => remove([e.path]), danger: true, hidden: readonly },
+                        ]}
+                      />
                     </div>
                   </td>
                 </tr>
@@ -630,6 +733,7 @@ export default function Browser() {
       {listing && !results && (
         <div className="border-t border-border px-4 py-1.5 text-xs text-muted-foreground">
           {tf("browser.summary", { d: listing.dir_count, f: listing.file_count, s: humanSize(listing.total_size) })}
+          {view.filter !== "all" && ` · ${tf("browser.filtered", { n: entries.length, total: allEntries.length })}`}
           {searching && <Loader2 className="ml-2 inline h-3 w-3 animate-spin" />}
         </div>
       )}
@@ -641,6 +745,22 @@ export default function Browser() {
           </div>
         </div>
       )}
+
+      <FolderPicker
+        open={!!picker}
+        title={picker ? tf("picker.title", { action: t(picker.action === "copy" ? "action.copy" : "action.move"), n: picker.paths.length }) : ""}
+        initial={path}
+        exclude={picker?.action === "move" ? picker.paths : []}
+        confirmLabel={picker ? t(picker.action === "copy" ? "action.copy" : "action.move") : ""}
+        onCancel={() => setPicker(null)}
+        onPick={async (dest) => {
+          const ok = await transfer(picker.paths, dest, picker.action === "copy");
+          if (ok) {
+            setPicker(null);
+            setSelected({});
+          }
+        }}
+      />
 
       <Transfers items={transfers} onClear={() => setTransfers((all) => all.filter((x) => x.state === "running"))} />
     </div>

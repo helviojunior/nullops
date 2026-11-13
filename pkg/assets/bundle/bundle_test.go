@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -29,5 +30,24 @@ func TestPackOpen(t *testing.T) {
 	blob[len(blob)-1] ^= 1
 	if _, err := Open(blob); err == nil {
 		t.Fatal("tampered blob accepted")
+	}
+}
+
+func TestPerBuildPepper(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "index.html"), []byte("x"), 0o644)
+	if err := SetPepper(strings.Repeat("ab", 32)); err != nil {
+		t.Fatal(err)
+	}
+	blob, _, _ := PackDir(dir)
+	if _, err := Open(blob); err != nil {
+		t.Fatal("same pepper must open:", err)
+	}
+	SetPepper("")
+	if _, err := Open(blob); err == nil {
+		t.Fatal("different pepper opened the blob")
+	}
+	if err := SetPepper("zz"); err == nil {
+		t.Fatal("invalid pepper accepted")
 	}
 }

@@ -1,0 +1,58 @@
+# Dependabot configuration for fmweb (Web File Manager)
+version: 2
+updates:
+  # Go modules
+  - package-ecosystem: "gomod"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps(go):"
+      include: "scope"
+    assignees:
+      - "helviojunior"
+    labels:
+      - "dependencies"
+      - "go"
+
+  # Front-end (React + Vite)
+  - package-ecosystem: "npm"
+    directory: "/frontend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps(frontend):"
+      include: "scope"
+    assignees:
+      - "helviojunior"
+    labels:
+      - "dependencies"
+      - "javascript"
+    groups:
+      frontend-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "ci:"
+      include: "scope"
+    assignees:
+      - "helviojunior"
+    labels:
+      - "dependencies"
+      - "github-actions"

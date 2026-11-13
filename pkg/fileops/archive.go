@@ -388,3 +388,34 @@ func asUserErr(err error, fallback string) error {
 	}
 	return errf(fallback)
 }
+
+// ZipTo streams a zip archive of rels (files and folders) to w, without any
+// temporary file. Symlinks are skipped.
+func (f *FS) ZipTo(w io.Writer, rels []string) error {
+	zw := zip.NewWriter(w)
+	err := f.walkSources(rels, func(abs, arc string, d fs.DirEntry) error {
+		if d.IsDir() {
+			_, err := zw.Create(arc + "/")
+			return err
+		}
+		info, err := d.Info()
+		if err != nil || !info.Mode().IsRegular() {
+			return nil
+		}
+		hdr, err := zip.FileInfoHeader(info)
+		if err != nil {
+			return err
+		}
+		hdr.Name = arc
+		hdr.Method = zip.Deflate
+		zf, err := zw.CreateHeader(hdr)
+		if err != nil {
+			return err
+		}
+		return copyFrom(zf, abs)
+	})
+	if cerr := zw.Close(); err == nil {
+		err = cerr
+	}
+	return err
+}

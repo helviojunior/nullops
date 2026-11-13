@@ -16,6 +16,7 @@ import (
 type Error struct {
 	Msg    string
 	Status int
+	Code   string // machine-readable (e.g. "conflict")
 }
 
 func (e *Error) Error() string { return e.Msg }
@@ -49,6 +50,10 @@ type Payload struct {
 	Query       string   `json:"query"`
 	Mode        any      `json:"mode"`
 	ToSubfolder bool     `json:"to_subfolder"`
+	Encoding    string   `json:"encoding"`
+	EOL         string   `json:"eol"`
+	Hash        string   `json:"hash"`
+	Force       bool     `json:"force"`
 }
 
 var writeActions = map[string]bool{
@@ -73,6 +78,10 @@ func (a *API) Dispatch(action string, raw []byte, c Caller) (any, error) {
 	}
 	res, err := a.run(action, &p, c)
 	if err != nil {
+		var ce fileops.ConflictError
+		if errors.As(err, &ce) {
+			return nil, &Error{Msg: ce.Error(), Status: 409, Code: "conflict"}
+		}
 		var fe *fileops.Error
 		if errors.As(err, &fe) {
 			return nil, &Error{Msg: fe.Msg, Status: 400}
@@ -111,11 +120,7 @@ func (a *API) run(action string, p *Payload, c Caller) (any, error) {
 	case "probe":
 		return fs.Probe(p.Path)
 	case "read":
-		s, err := fs.ReadText(p.Path)
-		if err != nil {
-			return nil, err
-		}
-		return map[string]any{"path": p.Path, "content": s}, nil
+		return fs.ReadDocument(p.Path)
 	case "search":
 		r, err := fs.Search(p.Path, p.Query)
 		if err != nil {
@@ -127,7 +132,11 @@ func (a *API) run(action string, p *Payload, c Caller) (any, error) {
 		if p.Content != nil {
 			content = *p.Content
 		}
-		return fs.WriteText(p.Path, content)
+		e, hash, err := fs.WriteDocument(p.Path, content, p.Encoding, p.EOL, p.Hash, p.Force)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"entry": e, "hash": hash}, nil
 	case "mkdir":
 		return fs.Mkdir(p.Path, p.Name)
 	case "touch":

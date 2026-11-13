@@ -50,8 +50,10 @@ func DetectMime(buf []byte) (mime string, isText bool) {
 	switch {
 	case strings.HasPrefix(base, "text/"):
 		if strings.HasPrefix(charset, "utf-16") {
-			// Text, but the editor only handles UTF-8: download instead.
-			return mime, false
+			// UTF-16 with BOM (common in Windows scripts): editable, the
+			// editor writes it back as UTF-16.
+			_, _, ok := decodeText(evenLen(buf))
+			return mime, ok
 		}
 		if looksText(buf) {
 			return mime, true
@@ -89,4 +91,12 @@ func looksText(buf []byte) bool {
 		}
 	}
 	return ctrl*100 <= len(buf) // at most 1% control bytes
+}
+
+// evenLen trims a trailing odd byte (a UTF-16 unit cut by the probe size).
+func evenLen(b []byte) []byte {
+	if len(b)%2 == 1 {
+		return b[:len(b)-1]
+	}
+	return b
 }

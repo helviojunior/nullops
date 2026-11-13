@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"os"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite" // pure-Go SQLite (no cgo: keeps cross-compiling simple)
@@ -38,6 +39,9 @@ type Store interface {
 	Load(idHash string) (*Record, error) // (nil, nil) when not found
 	Delete(idHash string) error
 	Purge(now time.Time) (int64, error)
+	List() ([]*Record, error)
+	DeleteUser(username string) (int64, error)
+	DeletePrefix(idHashPrefix string) (int64, error)
 	Close() error
 }
 
@@ -119,6 +123,57 @@ func (s *SQLiteStore) Delete(idHash string) error {
 // Purge removes expired records.
 func (s *SQLiteStore) Purge(now time.Time) (int64, error) {
 	res, err := s.db.Exec(`DELETE FROM sessions WHERE expires_at < ?`, now.Unix())
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
+// List returns every record, newest first.
+func (s *SQLiteStore) List() ([]*Record, error) {
+	rows, err := s.db.Query(`SELECT id_hash, username, readonly, encrypted, created_at, expires_at,
+		ip, user_agent FROM sessions ORDER BY created_at DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*Record
+	for rows.Next() {
+		var r Record
+		var ro, enc int
+		var created, expires int64
+		var ip, ua sql.NullString
+		if err := rows.Scan(&r.IDHash, &r.Username, &ro, &enc, &created, &expires, &ip, &ua); err != nil {
+			return nil, err
+		}
+		r.ReadOnly, r.Encrypted = ro != 0, enc != 0
+		r.CreatedAt, r.ExpiresAt = time.Unix(created, 0), time.Unix(expires, 0)
+		r.IP, r.UserAgent = ip.String, ua.String
+		out = append(out, &r)
+	}
+	return out, rows.Err()
+}
+
+// DeleteUser removes every session of username.
+func (s *SQLiteStore) DeleteUser(username string) (int64, error) {
+	res, err := s.db.Exec(`DELETE FROM sessions WHERE username = ?`, username)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
+// DeletePrefix removes the sessions whose id hash starts with prefix (min 6 chars).
+func (s *SQLiteStore) DeletePrefix(prefix string) (int64, error) {
+	if len(prefix) < 6 {
+		return 0, errors.New("session id prefix must have at least 6 characters")
+	}
+	for _, c := range prefix {
+		if !strings.ContainsRune("0123456789abcdef", c) {
+			return 0, errors.New("invalid session id")
+		}
+	}
+	res, err := s.db.Exec(`DELETE FROM sessions WHERE id_hash LIKE ?`, prefix+"%")
 	if err != nil {
 		return 0, err
 	}

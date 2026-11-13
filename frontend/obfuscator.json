@@ -1,0 +1,17 @@
+{
+  "compact": true,
+  "target": "browser",
+  "stringArray": true,
+  "stringArrayEncoding": ["base64"],
+  "stringArrayThreshold": 0.75,
+  "rotateStringArray": true,
+  "shuffleStringArray": true,
+  "identifierNamesGenerator": "hexadecimal",
+  "renameGlobals": false,
+  "controlFlowFlattening": false,
+  "deadCodeInjection": false,
+  "selfDefending": false,
+  "debugProtection": false,
+  "disableConsoleOutput": false,
+  "sourceMap": false
+}

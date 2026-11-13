@@ -10,6 +10,9 @@ FRONTEND_DIST=./frontend/dist
 ASSET_BLOB=./pkg/assets/bundle.bin
 # docker (default; host needs no Node) | local (uses npm on the host)
 FRONTEND_BUILDER ?= docker
+# 1 = also obfuscate the JavaScript shipped to the browser (javascript-obfuscator)
+OBFUSCATE_JS ?= 0
+PEPPER_FILE=./build/.pepper
 
 ifdef VER
 	VER := $(VER)
@@ -22,7 +25,7 @@ BUILDENV=`go version | cut -d' ' -f 3,4 | sed 's/ /_/g'`
 BUILDTIME=`date -u +'%Y-%m-%dT%H:%M:%SZ'`
 
 
-.PHONY: help local windows linux mac all clean hooks fmt frontend assets test prepare get-version
+.PHONY: help local windows linux mac all clean hooks fmt frontend assets test test-frontend prepare get-version pepper
 
 default: local
 
@@ -41,19 +44,34 @@ fmt:		   ## Format all Go code with gofmt -s -w
 frontend:	   ## Build the web front-end (html/js/css) into frontend/dist
 	@echo "Building front-end ($(FRONTEND_BUILDER))..." ; \
 	rm -rf ./frontend/dist ; \
+	SCRIPT=build ; if [ "$(OBFUSCATE_JS)" = "1" ]; then SCRIPT=build:obfuscated ; fi ; \
 	if [ "$(FRONTEND_BUILDER)" = "local" ]; then \
-		cd $(FRONTEND_DIR) && (npm ci --no-audit --no-fund || npm install --no-audit --no-fund) && npm run build || exit 1 ; \
+		cd $(FRONTEND_DIR) && (npm ci --no-audit --no-fund || npm install --no-audit --no-fund) && npm run $$SCRIPT || exit 1 ; \
 	else \
-		DOCKER_BUILDKIT=1 docker build --target export --output type=local,dest=$(FRONTEND_DIST) $(FRONTEND_DIR) || exit 1 ; \
+		DOCKER_BUILDKIT=1 docker build --build-arg BUILD_SCRIPT=$$SCRIPT --target export --output type=local,dest=$(FRONTEND_DIST) $(FRONTEND_DIR) || exit 1 ; \
 	fi ; \
 	test -f $(FRONTEND_DIST)/index.html || { echo "front-end build produced no index.html" ; exit 1 ; } ; \
 	echo "Front-end ready in $(FRONTEND_DIST)."
 
-assets: frontend   ## Seal the front-end into the obfuscated blob embedded by Go
-	@go run ./tools/assetpack -in $(FRONTEND_DIST) -out $(ASSET_BLOB)
+pepper:		   ## Generate a random per-build obfuscation key (kept until `make clean`)
+	@mkdir -p ./build ; \
+	if [ ! -s $(PEPPER_FILE) ]; then \
+		head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > $(PEPPER_FILE) ; \
+		echo "Generated a new per-build obfuscation key." ; \
+	fi
+
+assets: frontend pepper   ## Seal the front-end into the obfuscated blob embedded by Go
+	@go run ./tools/assetpack -in $(FRONTEND_DIST) -out $(ASSET_BLOB) -pepper $$(cat $(PEPPER_FILE))
 
 test:		   ## Run Go unit tests (needs the asset blob: run `make assets` once)
-	@go test ./...
+	@go test -ldflags "-X=${PACKAGENAME}/pkg/assets/bundle.BuildPepper=$$(cat $(PEPPER_FILE) 2>/dev/null)" ./...
+
+test-frontend:	   ## Run the front-end unit tests (vitest)
+	@if [ "$(FRONTEND_BUILDER)" = "local" ]; then \
+		cd $(FRONTEND_DIR) && (npm ci --no-audit --no-fund || npm install --no-audit --no-fund) && npm test || exit 1 ; \
+	else \
+		DOCKER_BUILDKIT=1 docker build --target test $(FRONTEND_DIR) || exit 1 ; \
+	fi
 
 get-version:
 	@mkdir -p ${TARGET} ; \
@@ -80,6 +98,7 @@ get-version:
 -X=${PACKAGENAME}/internal/version.GitHash=${GITHASH} \
 -X=${PACKAGENAME}/internal/version.GoBuildEnv=${BUILDENV} \
 -X=${PACKAGENAME}/internal/version.GoBuildTime=${BUILDTIME} \
+-X=${PACKAGENAME}/pkg/assets/bundle.BuildPepper=$$(cat $(PEPPER_FILE)) \
 " > ${TARGET}/.ldflags
 
 prepare: assets get-version

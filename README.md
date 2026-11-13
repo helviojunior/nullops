@@ -20,10 +20,28 @@ fmweb web -r /data -b 0.0.0.0 -p 8443
 
 | Command | What it does |
 | --- | --- |
-| `fmweb create-tls` | Creates a self-signed certificate (`--host`, `--days`, `--force`) or imports one (`--cert`, `--key`) |
-| `fmweb add-user`   | Adds or updates a user (`-u`, `-p` / prompt / `--generate`, `--readonly`, `--update`) |
-| `fmweb web`        | Starts the server (`-r` root, `-b` bind, `-p` port, `--readonly`, `--show-hidden`, `--exclude`, `--allow-ext`, `--no-tls`, `-y`, `--no-auth`) |
+| `fmweb create-tls` | Creates a self-signed certificate (`--host`, `--days`, `--force`), imports one (`--cert`, `--key`) or gets one from Let's Encrypt (`--acme --domain files.example.com [--acme-email] [--acme-staging]`) |
+| `fmweb add-user`   | Adds or updates a user (`-u`, `-p` / prompt / `--generate`, `--readonly`, `--update`, `--set-password`, `--mfa` / `--no-mfa`) |
+| `fmweb list-users` | Lists users (access, MFA, dates) |
+| `fmweb del-user`   | Deletes a user and revokes its sessions |
+| `fmweb sessions`   | Lists active sessions; `sessions revoke <id-prefix> \| --user <name> \| --all` |
+| `fmweb web`        | Starts the server (`-r` root, `-b` bind, `-p` port, `--readonly`, `--show-hidden`, `--exclude`, `--allow-ext`, `--max-upload`, `--audit-log`, `--trusted-proxy`, `--session-ttl`, `--no-tls`, `-y`, `--no-auth`) |
 | `fmweb version`    | Version and build information |
+
+Changes to users (`add-user`, `del-user`) and revoked sessions take effect on a running server within seconds.
+
+### Sign-in and MFA
+
+Sign-in happens in steps, over the encrypted channel: **user → [MFA code] → password**.
+
+- MFA (TOTP, any authenticator app) is **optional**. A user enables it in the web UI (user menu → *Account
+  security*: scan the QR code, confirm with a code) or the admin runs `fmweb add-user -u bob --update --mfa`,
+  which prints the QR code in the terminal. Disabling it in the UI requires a current code.
+- An unknown username always gets the MFA step, as if it existed with MFA, and the attempt is logged
+  (`login attempt with unknown user`). Its code is always rejected.
+- A real user without MFA goes straight to the password, so the "MFA" answer is the only ambiguous one: to hide
+  which accounts exist completely, enable MFA for everyone.
+- Five failures (code or password) from the same IP lock it out for five minutes; a code cannot be reused.
 
 Global flags: `--data-dir` (default `./fmweb`), `-v`/`-vv` verbosity, `-D` (= `-vv`), `-q` quiet.
 
@@ -72,6 +90,9 @@ the editor works in UTF-8.
 | `upload`, `download`, `open`, `edit`, `create`, `mkdir`, `rename`, `delete`, `copy`, `move`, `chmod`, `zip`, `tar`, `extract` | `user`, `ip`, `path(s)`, plus `size` / `dest` / `mode` depending on the action |
 
 Failures are logged as `WARN … failed` with `err`. Listing and search only show up with `-v`.
+Console lines carry a timestamp; `--audit-log FILE` also appends every audit event as a JSON line
+(`time`, `level`, `event`, `user`, `ip`, …). Behind a reverse proxy, pass `--trusted-proxy 10.0.0.0/8` so the
+real client IP from `X-Forwarded-For` is logged (only trusted hops are skipped, so it cannot be spoofed).
 
 ### Sessions
 
@@ -115,17 +136,23 @@ Requirements: Go 1.24+ and Docker (the front-end is built in a container; the
 host does not need Node). With Node installed, use `FRONTEND_BUILDER=local`.
 
 ```bash
-make            # front-end → obfuscated bundle → binary for the local platform
-make all        # cross-compile: windows/linux/darwin × amd64/386/arm64
-make test       # Go tests (requires `make assets` once)
+make                  # front-end → obfuscated bundle → binary for the local platform
+make all              # cross-compile: windows/linux/darwin × amd64/386/arm64
+make OBFUSCATE_JS=1   # also obfuscate the JavaScript served to the browser
+make test             # Go tests (requires `make assets` once)
+make test-frontend    # front-end unit tests (vitest)
 make clean
 ```
 
 Pipeline:
 
 1. `make frontend`: `docker build` of `frontend/` (Vite + React + Tailwind) → `frontend/dist/`
-2. `make assets`: `tools/assetpack` seals `dist/` into `pkg/assets/bundle.bin`
+2. `make assets`: `tools/assetpack` seals `dist/` into `pkg/assets/bundle.bin` under a random per-build key
+   (`build/.pepper`, also injected into the binary with `-ldflags`)
 3. `go build`: `//go:embed bundle.bin`; at runtime the bundle is decrypted into RAM
+
+CI and releases run on GitHub Actions (`.github/workflows`): a published release builds every platform and
+attaches the binaries and `SHA256SUMS`.
 
 Binaries go to `./build/fmweb_<os>_<arch>[.exe]`. `VER=1.2.3 make all` sets the version.
 

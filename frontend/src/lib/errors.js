@@ -22,6 +22,17 @@ const PT = {
   "Decryption failed": "Falha ao decifrar",
   "Not authenticated": "Não autenticado",
   "No session": "Sem sessão",
+  "Invalid code": "Código inválido",
+  "Login expired": "O login expirou",
+  "Too many attempts": "Muitas tentativas",
+  "Start the MFA setup again": "Inicie a configuração do MFA novamente",
+  "MFA is already enabled": "O MFA já está ativado",
+  "File too large": "Arquivo grande demais",
+  "Upload out of order": "Envio fora de ordem",
+  "The file was changed on disk since it was opened": "O arquivo foi alterado no disco desde que foi aberto",
+  "Download failed": "O download falhou",
+  "Truncated download": "Download incompleto",
+  "Nothing selected": "Nada selecionado",
 };
 
 export function errorText(err, lang) {

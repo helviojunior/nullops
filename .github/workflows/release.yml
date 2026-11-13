@@ -1,0 +1,100 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to build (semver, e.g. 1.2.3). Binaries are attached to release tag v<version> if it exists, otherwise kept as a workflow artifact.'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.event.release.tag_name || inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build and Publish Binaries
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v6
+      with:
+        fetch-depth: 0
+        ref: ${{ github.event.release.tag_name || github.ref }}
+
+    - name: Set up Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version-file: 'go.mod'
+
+    - name: Resolve version
+      id: vars
+      env:
+        RAW_VERSION: ${{ github.event.release.tag_name || inputs.version }}
+      run: |
+        VER=$(printf '%s' "$RAW_VERSION" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?' | head -n 1 || true)
+        if [ -z "$VER" ]; then
+          echo "❌ Could not extract a semver (X.Y.Z) from '$RAW_VERSION'"
+          exit 1
+        fi
+        echo "Version: $VER"
+        echo "version=$VER" >> "$GITHUB_OUTPUT"
+
+    - name: Build binaries
+      env:
+        VER: ${{ steps.vars.outputs.version }}
+      run: VER="$VER" make all FRONTEND_BUILDER=local
+
+    - name: Smoke test linux/amd64 binary
+      run: ./build/fmweb_linux_amd64 version
+
+    - name: Generate SHA256SUMS
+      working-directory: build
+      run: |
+        find . -maxdepth 1 -type f ! -name '.*' ! -name 'SHA256SUMS' -printf '%f\n' \
+          | sort | xargs sha256sum > SHA256SUMS
+        cat SHA256SUMS
+
+    - name: Upload build artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: fmweb-${{ steps.vars.outputs.version }}
+        path: |
+          build/*
+          !build/.*
+        retention-days: 30
+
+    - name: Upload assets to release
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        TAG: ${{ github.event.release.tag_name || format('v{0}', steps.vars.outputs.version) }}
+      run: |
+        if ! gh release view "$TAG" > /dev/null 2>&1; then
+          if [ "${{ github.event_name }}" = "release" ]; then
+            echo "❌ Release $TAG not found"
+            exit 1
+          fi
+          echo "⚠️ No release for tag $TAG; binaries are only available as the workflow artifact."
+          exit 0
+        fi
+        cd build
+        FILES=$(find . -maxdepth 1 -type f ! -name '.*' -printf '%f\n' | sort)
+        # shellcheck disable=SC2086
+        gh release upload "$TAG" $FILES --clobber
+        echo "✅ Uploaded to release $TAG:"
+        echo "$FILES"

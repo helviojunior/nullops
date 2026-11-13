@@ -15,7 +15,12 @@ import (
 func main() {
 	in := flag.String("in", "frontend/dist", "front-end build directory")
 	out := flag.String("out", "pkg/assets/bundle.bin", "output blob")
+	pep := flag.String("pepper", "", "per-build key (64 hex chars); must match -X .../bundle.BuildPepper")
 	flag.Parse()
+	if err := bundle.SetPepper(*pep); err != nil {
+		fmt.Fprintln(os.Stderr, "assetpack:", err)
+		os.Exit(1)
+	}
 
 	if _, err := os.Stat(filepath.Join(*in, "index.html")); err != nil {
 		fmt.Fprintf(os.Stderr, "assetpack: %s/index.html not found; build the front-end first (make frontend)\n", *in)

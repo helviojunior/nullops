@@ -3,11 +3,11 @@ package server
 import (
 	"encoding/json"
 	"net/http"
-	"path"
 	"strings"
 	"time"
 
 	"github.com/helviojunior/fmweb/pkg/api"
+	"github.com/helviojunior/fmweb/pkg/assets"
 	"github.com/helviojunior/fmweb/pkg/log"
 )
 
@@ -25,10 +25,10 @@ func userAgent(r *http.Request) string {
 }
 
 // logAccess logs page loads (GET / and SPA routes), not every static asset.
-func logAccess(next http.Handler) http.Handler {
+func (s *Server) logAccess(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodGet && path.Ext(r.URL.Path) == "" {
-			log.Info("access", "ip", clientIP(r), "path", r.URL.Path, "ua", userAgent(r))
+		if r.Method == http.MethodGet && assets.IsPageRequest(r.URL.Path) {
+			auditInfo("access", "ip", s.clientIP(r), "path", r.URL.Path, "ua", userAgent(r))
 		}
 		next.ServeHTTP(w, r)
 	})
@@ -42,14 +42,14 @@ var opNames = map[string]string{
 }
 
 // auditAction logs a file operation with its relevant arguments.
-func auditAction(r *http.Request, user, action string, plain []byte, err error) {
+func (s *Server) auditAction(r *http.Request, user, action string, plain []byte, err error) {
 	op, ok := opNames[action]
 	if !ok {
 		// list/stat/search/info: debug only (-v)
 		if log.Verbosity() >= 1 {
 			var p api.Payload
 			_ = json.Unmarshal(plain, &p)
-			kv := []any{"user", user, "ip", clientIP(r), "path", "/" + p.Path}
+			kv := []any{"user", user, "ip", s.clientIP(r), "path", "/" + p.Path}
 			if p.Query != "" {
 				kv = append(kv, "query", p.Query)
 			}
@@ -62,7 +62,7 @@ func auditAction(r *http.Request, user, action string, plain []byte, err error) 
 	}
 	var p api.Payload
 	_ = json.Unmarshal(plain, &p)
-	kv := []any{"user", user, "ip", clientIP(r)}
+	kv := []any{"user", user, "ip", s.clientIP(r)}
 	switch action {
 	case "mkdir", "touch":
 		kv = append(kv, "path", "/"+joinRel(p.Path, p.Name))
@@ -88,10 +88,10 @@ func auditAction(r *http.Request, user, action string, plain []byte, err error) 
 		kv = append(kv, "path", "/"+p.Path)
 	}
 	if err != nil {
-		log.Warn(op+" failed", append(kv, "err", err.Error())...)
+		auditWarn(op+" failed", append(kv, "err", err.Error())...)
 		return
 	}
-	log.Info(op, kv...)
+	auditInfo(op, kv...)
 }
 
 func joinRel(dir, name string) string {
@@ -135,7 +135,7 @@ func (w *statusWriter) Write(b []byte) (int, error) {
 }
 
 // traceRequests logs every HTTP request at -vv.
-func traceRequests(next http.Handler) http.Handler {
+func (s *Server) traceRequests(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if log.Verbosity() < 2 {
 			next.ServeHTTP(w, r)
@@ -145,6 +145,9 @@ func traceRequests(next http.Handler) http.Handler {
 		sw := &statusWriter{ResponseWriter: w}
 		next.ServeHTTP(sw, r)
 		log.Debug("http", "method", r.Method, "path", r.URL.Path, "status", sw.status,
-			"bytes", sw.bytes, "ms", time.Since(start).Milliseconds(), "ip", clientIP(r))
+			"bytes", sw.bytes, "ms", time.Since(start).Milliseconds(), "ip", s.clientIP(r))
 	})
 }
+
+func auditInfo(msg string, kv ...any) { log.AuditInfo(msg, kv...) }
+func auditWarn(msg string, kv ...any) { log.AuditWarn(msg, kv...) }

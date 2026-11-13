@@ -49,6 +49,10 @@ type Config struct {
 	Title      string
 	SessionTTL time.Duration
 	Sessions   session.Store // persistent session store (nil = memory only)
+	// TrustedProxies whose X-Forwarded-For / X-Real-IP are honoured.
+	TrustedProxies []*net.IPNet
+	// MaxUpload caps the size of one uploaded file in bytes (0 = unlimited).
+	MaxUpload  int64
 	AllowedExt []string
 	Users      *auth.Store
 	FS         *fileops.FS
@@ -68,6 +72,12 @@ func New(cfg Config) (*Server, error) {
 	if err := assets.Load(); err != nil {
 		return nil, fmt.Errorf("embedded front-end: %w", err)
 	}
+	return newServer(cfg), nil
+}
+
+// newServer builds the server without checking the embedded front-end
+// (unit tests exercise the API only).
+func newServer(cfg Config) *Server {
 	s := &Server{
 		cfg:      cfg,
 		sessions: session.NewManager(cfg.SessionTTL, cfg.Sessions, cfg.Plaintext),
@@ -78,10 +88,10 @@ func New(cfg Config) (*Server, error) {
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/", s.handleAPI)
-	mux.Handle("/", logAccess(assets.Handler()))
+	mux.Handle("/", s.logAccess(assets.Handler()))
 	s.http = &http.Server{
 		Addr:              cfg.Addr,
-		Handler:           traceRequests(securityHeaders(mux)),
+		Handler:           s.traceRequests(securityHeaders(mux)),
 		ReadHeaderTimeout: 15 * time.Second,
 		IdleTimeout:       120 * time.Second,
 		// TLS handshake errors ("bad certificate" from browsers that do not
@@ -94,7 +104,7 @@ func New(cfg Config) (*Server, error) {
 			Certificates: []tls.Certificate{*cfg.TLS},
 		}
 	}
-	return s, nil
+	return s
 }
 
 // ListenAndServe blocks until ctx is cancelled or the listener fails.
@@ -134,6 +144,8 @@ func securityHeaders(next http.Handler) http.Handler {
 		h.Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; "+
 			"style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; "+
 			"connect-src 'self'; font-src 'self' data:; object-src 'none'; "+
+			// blob: frames: PDF preview of a decrypted download
+			"frame-src 'self' blob:; "+
 			"base-uri 'none'; frame-ancestors 'none'; form-action 'self'")
 		h.Set("Server", "fmweb")
 		next.ServeHTTP(w, r)
@@ -176,14 +188,6 @@ type httpErr struct {
 
 func (e *httpErr) Error() string { return e.msg }
 
-func clientIP(r *http.Request) string {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-	return host
-}
-
 // ---- /api ---------------------------------------------------------------
 
 func (s *Server) handleAPI(w http.ResponseWriter, r *http.Request) {
@@ -214,12 +218,12 @@ func (s *Server) handleAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch action {
-	case "login":
-		s.login(w, r, sess, body)
+	case "login_start", "login_mfa", "login":
+		s.loginStep(w, r, sess, action, body)
 		return
 	case "logout":
 		if ok, u, _ := sess.Auth(); ok {
-			log.Info("logout", "user", u, "ip", clientIP(r))
+			auditInfo("logout", "user", u, "ip", s.clientIP(r))
 		}
 		s.sessions.Destroy(sess.ID)
 		writeSealed(w, sess, map[string]any{"ok": true})
@@ -257,17 +261,29 @@ func (s *Server) handleAPI(w http.ResponseWriter, r *http.Request) {
 		s.upload(w, r, sess, plain, caller)
 		return
 	}
+	if strings.HasPrefix(action, "mfa_") {
+		res, msg := s.accountAction(r, sess, user, action, plain)
+		if msg != "" {
+			writeSealed(w, sess, map[string]any{"ok": false, "error": msg})
+			return
+		}
+		writeSealed(w, sess, map[string]any{"ok": true, "result": res})
+		return
+	}
 	res, err := s.api.Dispatch(action, plain, caller)
-	auditAction(r, user, action, plain, err)
+	s.auditAction(r, user, action, plain, err)
 	if err != nil {
 		// Application errors travel inside the encrypted body with HTTP 200;
 		// status codes are reserved for transport/auth failures.
 		var ae *api.Error
-		msg := "Operation failed"
+		out := map[string]any{"ok": false, "error": "Operation failed"}
 		if errors.As(err, &ae) {
-			msg = ae.Msg
+			out["error"] = ae.Msg
+			if ae.Code != "" {
+				out["code"] = ae.Code
+			}
 		}
-		writeSealed(w, sess, map[string]any{"ok": false, "error": msg})
+		writeSealed(w, sess, out)
 		return
 	}
 	writeSealed(w, sess, map[string]any{"ok": true, "result": res})
@@ -339,58 +355,28 @@ func (s *Server) handshake(w http.ResponseWriter, body []byte) {
 	writeJSON(w, 200, resp)
 }
 
-func (s *Server) login(w http.ResponseWriter, r *http.Request, sess *session.Session, body []byte) {
-	plain, err := s.open(sess, body)
-	if err != nil {
-		writeErr(w, 400, "Decryption failed")
-		return
-	}
-	if s.cfg.NoAuth {
-		writeSealed(w, sess, map[string]any{"ok": true, "username": "anonymous", "readonly": s.cfg.ReadOnly})
-		return
-	}
-	var req struct {
-		Username string `json:"username"`
-		Password string `json:"password"`
-	}
-	_ = json.Unmarshal(plain, &req)
-	ip, ua := clientIP(r), userAgent(r)
-	if wait := s.limiter.blocked(ip); wait > 0 {
-		log.Warn("login blocked (too many attempts)", "user", req.Username, "ip", ip, "ua", ua)
-		writeSealed(w, sess, map[string]any{"ok": false, "error": "Too many attempts",
-			"retry_after": int(wait.Seconds()) + 1})
-		return
-	}
-	u, ok := s.cfg.Users.Verify(req.Username, req.Password)
-	if !ok {
-		s.limiter.fail(ip)
-		log.Warn("login failed", "user", req.Username, "ip", ip, "ua", ua)
-		writeSealed(w, sess, map[string]any{"ok": false, "error": "Invalid credentials"})
-		return
-	}
-	s.limiter.reset(ip)
-	ro := u.ReadOnly || s.cfg.ReadOnly
-	if err := s.sessions.Authenticate(sess, u.Username, ro, ip, ua); err != nil {
-		log.Error("cannot persist session", "err", err)
-	}
-	log.Info("login", "user", u.Username, "ip", ip, "ua", ua, "readonly", ro)
-	writeSealed(w, sess, map[string]any{"ok": true, "username": u.Username, "readonly": ro,
-		"expires_at": sess.Expires().Unix()})
-}
-
 func (s *Server) download(w http.ResponseWriter, r *http.Request, sess *session.Session, plain []byte, c api.Caller) {
 	var req struct {
-		Path string `json:"path"`
+		Path  string   `json:"path"`
+		Paths []string `json:"paths"`
 	}
 	_ = json.Unmarshal(plain, &req)
+	if len(req.Paths) > 0 {
+		s.downloadZip(w, r, sess, req.Paths, c)
+		return
+	}
+	if st, err := s.cfg.FS.Stat(req.Path); err == nil && st.IsDir {
+		s.downloadZip(w, r, sess, []string{req.Path}, c)
+		return
+	}
 	fh, st, err := s.cfg.FS.OpenFile(req.Path)
 	if err != nil {
-		log.Warn("download failed", "user", c.Username, "ip", clientIP(r), "path", "/"+req.Path, "err", err.Error())
+		auditWarn("download failed", "user", c.Username, "ip", s.clientIP(r), "path", "/"+req.Path, "err", err.Error())
 		writeErr(w, 404, err.Error())
 		return
 	}
 	defer fh.Close()
-	log.Info("download", "user", c.Username, "ip", clientIP(r), "path", "/"+req.Path, "size", st.Size())
+	auditInfo("download", "user", c.Username, "ip", s.clientIP(r), "path", "/"+req.Path, "size", st.Size())
 	size := st.Size()
 	frames := (size + downloadChunk - 1) / downloadChunk
 	h := w.Header()
@@ -429,12 +415,35 @@ func (s *Server) upload(w http.ResponseWriter, r *http.Request, sess *session.Se
 	var req struct {
 		Path   string `json:"path"`
 		Name   string `json:"name"`
+		ID     string `json:"upload_id"`
 		Offset int64  `json:"offset"`
+		Total  *int64 `json:"size"`
 		Last   *bool  `json:"last"`
 		Chunk  string `json:"chunk"`
+		Status bool   `json:"status"` // only ask how much is already uploaded
 	}
 	if err := json.Unmarshal(plain, &req); err != nil {
 		writeSealed(w, sess, map[string]any{"ok": false, "error": "Malformed request"})
+		return
+	}
+	total := int64(-1)
+	if req.Total != nil {
+		total = *req.Total
+	}
+	if req.Status {
+		if s.cfg.MaxUpload > 0 && total > s.cfg.MaxUpload {
+			writeSealed(w, sess, map[string]any{"ok": false, "error": "File too large", "code": "too_large"})
+			return
+		}
+		n, err := s.cfg.FS.UploadStatus(req.Path, req.Name, req.ID)
+		if err != nil {
+			writeSealed(w, sess, map[string]any{"ok": false, "error": err.Error()})
+			return
+		}
+		if total >= 0 && n > total {
+			n = 0
+		}
+		writeSealed(w, sess, map[string]any{"ok": true, "result": map[string]any{"received": n, "max_size": s.cfg.MaxUpload}})
 		return
 	}
 	data, err := crypto.B64.DecodeString(req.Chunk)
@@ -443,16 +452,87 @@ func (s *Server) upload(w http.ResponseWriter, r *http.Request, sess *session.Se
 		return
 	}
 	last := req.Last == nil || *req.Last
-	e, received, err := s.cfg.FS.UploadChunk(req.Path, req.Name, req.Offset, data, last, s.cfg.AllowedExt)
+	e, received, err := s.cfg.FS.UploadChunk(fileops.UploadRequest{
+		Dir: req.Path, Name: req.Name, ID: req.ID, Offset: req.Offset, Total: total,
+		Data: data, Last: last, MaxSize: s.cfg.MaxUpload, AllowExt: s.cfg.AllowedExt,
+	})
 	if err != nil {
-		log.Warn("upload failed", "user", c.Username, "ip", clientIP(r), "path", "/"+joinRel(req.Path, req.Name), "err", err.Error())
+		auditWarn("upload failed", "user", c.Username, "ip", s.clientIP(r), "path", "/"+joinRel(req.Path, req.Name), "err", err.Error())
 		writeSealed(w, sess, map[string]any{"ok": false, "error": err.Error()})
 		return
 	}
 	if e != nil {
-		log.Info("upload", "user", c.Username, "ip", clientIP(r), "path", "/"+e.Path, "size", e.Size)
+		auditInfo("upload", "user", c.Username, "ip", s.clientIP(r), "path", "/"+e.Path, "size", e.Size)
 		writeSealed(w, sess, map[string]any{"ok": true, "result": e})
 		return
 	}
 	writeSealed(w, sess, map[string]any{"ok": true, "result": map[string]any{"received": received}})
 }
+
+// frameWriter buffers a stream and emits it as encrypted frames (or raw bytes
+// for plaintext sessions).
+type frameWriter struct {
+	w   http.ResponseWriter
+	c   *crypto.Cipher
+	buf []byte
+	err error
+}
+
+func (f *frameWriter) Write(p []byte) (int, error) {
+	if f.err != nil {
+		return 0, f.err
+	}
+	n := len(p)
+	for len(p) > 0 {
+		room := downloadChunk - len(f.buf)
+		if room > len(p) {
+			room = len(p)
+		}
+		f.buf = append(f.buf, p[:room]...)
+		p = p[room:]
+		if len(f.buf) == downloadChunk {
+			f.flush()
+		}
+	}
+	return n, f.err
+}
+
+func (f *frameWriter) flush() {
+	if len(f.buf) == 0 || f.err != nil {
+		return
+	}
+	out := f.buf
+	if f.c != nil {
+		out = f.c.Frame(f.buf)
+	}
+	if _, err := f.w.Write(out); err != nil {
+		f.err = err
+	}
+	f.buf = f.buf[:0]
+}
+
+// downloadZip streams a zip of folders / a selection, built on the fly.
+func (s *Server) downloadZip(w http.ResponseWriter, r *http.Request, sess *session.Session, paths []string, c api.Caller) {
+	for _, p := range paths {
+		if _, err := s.cfg.FS.Stat(p); err != nil {
+			auditWarn("download failed", "user", c.Username, "ip", s.clientIP(r), "paths", strings.Join(paths, ", "), "err", err.Error())
+			writeErr(w, 404, err.Error())
+			return
+		}
+	}
+	auditInfo("download zip", "user", c.Username, "ip", s.clientIP(r), "paths", "/"+strings.Join(paths, ", /"))
+	h := w.Header()
+	h.Set("Content-Type", "application/octet-stream")
+	h.Set("Cache-Control", "no-store")
+	h.Set("X-Archive", "zip")
+	w.WriteHeader(200)
+	fw := &frameWriter{w: w, c: sess.Cipher, buf: make([]byte, 0, downloadChunk)}
+	if err := s.cfg.FS.ZipTo(fw, paths); err != nil {
+		log.Debug("zip stream aborted", "err", err)
+		return // the client sees a truncated stream and reports the failure
+	}
+	fw.flush()
+}
+
+// Handler exposes the HTTP handler (tests).
+func (s *Server) Handler() http.Handler { return s.http.Handler }

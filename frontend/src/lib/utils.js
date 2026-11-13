@@ -79,3 +79,52 @@ export function saveBlob(blob, name) {
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 30000);
 }
+
+const IMAGE_RE = /\.(png|jpe?g|gif|webp|svg|bmp|ico|avif)$/i;
+export const isImage = (name) => IMAGE_RE.test(name);
+export const isPdf = (name) => /\.pdf$/i.test(name);
+export const isPreviewable = (name) => isImage(name) || isPdf(name) || isEditable(name);
+
+// Preview limits: bigger files are offered for download instead.
+export const PREVIEW_MAX_MEDIA = 50 * 1024 * 1024;
+export const PREVIEW_MAX_TEXT = 1024 * 1024;
+
+export function previewKind(mime, isText) {
+  const m = (mime || "").toLowerCase();
+  if (m.startsWith("image/")) return "image";
+  if (m.startsWith("application/pdf")) return "pdf";
+  if (isText) return "text";
+  return "other";
+}
+
+// File type groups for the listing filter.
+const TYPE_GROUPS = {
+  image: IMAGE_RE,
+  document: /\.(pdf|docx?|odt|rtf|xlsx?|ods|csv|tsv|pptx?|odp|md|txt)$/i,
+  archive: /\.(zip|tar|tgz|gz|bz2|xz|7z|rar)$/i,
+  code: /\.(js|jsx|mjs|ts|tsx|go|py|rb|php|java|kt|c|h|cpp|hpp|cs|rs|swift|sh|bash|zsh|ps1|psm1|psd1|bat|cmd|vbs|sql|html?|css|scss|json|ya?ml|toml|xml|ini|conf)$/i,
+  media: /\.(mp3|wav|flac|ogg|m4a|mp4|mkv|avi|mov|webm)$/i,
+};
+
+export function typeGroup(entry) {
+  if (entry.is_dir) return "folder";
+  for (const [g, re] of Object.entries(TYPE_GROUPS)) if (re.test(entry.name)) return g;
+  return "other";
+}
+
+export const TYPE_FILTERS = ["all", "folder", "image", "document", "archive", "code", "media", "other"];
+
+// Sorting: folders first, then by key.
+export function sortEntries(entries, key, dir) {
+  const mul = dir === "desc" ? -1 : 1;
+  const cmp = {
+    name: (a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }),
+    size: (a, b) => (a.size || 0) - (b.size || 0),
+    mtime: (a, b) => (a.mtime || 0) - (b.mtime || 0),
+    type: (a, b) => typeGroup(a).localeCompare(typeGroup(b)),
+  }[key] || (() => 0);
+  return [...entries].sort((a, b) => {
+    if (a.is_dir !== b.is_dir) return a.is_dir ? -1 : 1;
+    return cmp(a, b) * mul || a.name.localeCompare(b.name);
+  });
+}

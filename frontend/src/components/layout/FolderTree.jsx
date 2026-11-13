@@ -4,6 +4,8 @@ import { ChevronRight, Folder, FolderOpen, HardDrive, Loader2, PanelLeftClose, A
 import { useTree } from "contexts/TreeContext";
 import { useI18n } from "i18n";
 import { cn, joinPath, pathToRoute } from "lib/utils";
+import { useAuth } from "contexts/AuthContext";
+import { canDrop, getDragPaths, isInternalDrag, useTransfer } from "lib/useTransfer";
 
 export const TREE_MIN = 180;
 export const TREE_MAX = 600;
@@ -11,6 +13,10 @@ export const TREE_DEFAULT = 260;
 
 function TreeNode({ path, name, depth, current }) {
   const { nodes, expanded, toggle } = useTree();
+  const { user } = useAuth();
+  const transfer = useTransfer();
+  const [over, setOver] = useState(false);
+  const canWrite = !user?.readonly;
   const node = nodes[path];
   const open = expanded.has(path);
   const active = path === current;
@@ -22,9 +28,24 @@ function TreeNode({ path, name, depth, current }) {
       <div
         className={cn(
           "group flex items-center gap-1 rounded-md pr-2 text-sm",
-          active ? "bg-primary/15 text-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+          active ? "bg-primary/15 text-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground",
+          over && "bg-primary/25 text-foreground outline outline-2 -outline-offset-2 outline-primary"
         )}
         style={{ paddingLeft: depth * 14 + 4 }}
+        onDragOver={(e) => {
+          if (!canWrite || !isInternalDrag(e)) return;
+          e.preventDefault();
+          e.dataTransfer.dropEffect = e.ctrlKey || e.altKey ? "copy" : "move";
+          setOver(true);
+        }}
+        onDragLeave={() => setOver(false)}
+        onDrop={(e) => {
+          if (!canWrite || !isInternalDrag(e)) return;
+          e.preventDefault();
+          setOver(false);
+          const paths = getDragPaths(e);
+          if (paths && canDrop(paths, path)) transfer(paths, path, e.ctrlKey || e.altKey);
+        }}
       >
         <button
           type="button"

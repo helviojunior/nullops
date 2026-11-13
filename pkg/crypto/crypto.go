@@ -129,3 +129,8 @@ func (c *Cipher) Frame(plaintext []byte) []byte {
 	binary.BigEndian.PutUint32(out[:4], uint32(len(out)-4-ivLen))
 	return out
 }
+
+// OpenFrame decrypts one binary frame (iv, ct||tag) — the inverse of Frame.
+func (c *Cipher) OpenFrame(iv, ct []byte) ([]byte, error) {
+	return c.aead.Open(nil, iv, ct, nil)
+}

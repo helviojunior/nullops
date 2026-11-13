@@ -20,7 +20,7 @@ func TestDetectMime(t *testing.T) {
 		{"pdf", []byte("%PDF-1.7\n%\xe2\xe3\xcf\xd3\n"), false, "application/pdf"},
 		{"zip", []byte("PK\x03\x04\x14\x00\x00\x00"), false, "application/zip"},
 		{"nul", []byte("abc\x00def"), false, "application/octet-stream"},
-		{"utf16", []byte("\xff\xfeW\x00r\x00i\x00"), false, "text/plain"},
+		{"utf16", []byte("\xff\xfeW\x00r\x00i\x00"), true, "text/plain"},
 		// text start, binary after the first 512 bytes
 		{"late-binary", append([]byte(strings.Repeat("a", 600)), 0, 1, 2), false, "application/octet-stream"},
 		// multi-byte char cut at the 4096 boundary

@@ -19,6 +19,7 @@ import (
 	"crypto/hkdf"
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"io"
 	"io/fs"
@@ -40,8 +41,32 @@ var (
 	p3 = []byte{0x91, 0x0c, 0x6e, 0x23, 0xb8, 0x45, 0xfa, 0x37, 0x08, 0xd6, 0x7c, 0x51, 0xee, 0x29, 0x93, 0xc4}
 )
 
+// BuildPepper is a random per-build key (64 hex chars) injected by the
+// Makefile with -ldflags "-X .../bundle.BuildPepper=..." and also given to
+// tools/assetpack, so every build seals its front-end under a different key.
+// Empty = built-in default.
+var BuildPepper string
+
+// SetPepper overrides the pepper (used by tools/assetpack).
+func SetPepper(hexKey string) error {
+	if hexKey != "" {
+		if b, err := hex.DecodeString(hexKey); err != nil || len(b) != 32 {
+			return errors.New("pepper must be 64 hex characters")
+		}
+	}
+	BuildPepper = hexKey
+	return nil
+}
+
 func pepper() []byte {
 	out := make([]byte, 32)
+	if b, err := hex.DecodeString(BuildPepper); err == nil && len(b) == 32 {
+		// mixed with the built-in parts so the -X string alone is not the key
+		for i := range out {
+			out[i] = b[i] ^ p1[i%16] ^ p3[(i*5)%16]
+		}
+		return out
+	}
 	for i := 0; i < 16; i++ {
 		out[i] = p1[i] ^ p3[15-i]
 		out[16+i] = p2[i] ^ p1[(i*7)%16] ^ p3[i]

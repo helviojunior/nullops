@@ -3,6 +3,7 @@ package auth
 import (
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestHashVerify(t *testing.T) {
@@ -46,5 +47,61 @@ func TestStore(t *testing.T) {
 	}
 	if err := s.Set("bad/name", "password1", false, false); err == nil {
 		t.Fatal("invalid username accepted")
+	}
+}
+
+func TestTOTP(t *testing.T) {
+	// RFC 6238 test vector (SHA1, secret "12345678901234567890", T=59 -> 94287082, 8 digits).
+	// We use 6 digits: the last six digits of the 8-digit value.
+	secret := b32.EncodeToString([]byte("12345678901234567890"))
+	code, _ := TOTPCode(secret, time.Unix(59, 0))
+	if code != "287082" {
+		t.Fatalf("rfc vector: got %s", code)
+	}
+	now := time.Now()
+	c, _ := TOTPCode(secret, now)
+	if _, ok := VerifyTOTP(secret, c, now); !ok {
+		t.Fatal("current code rejected")
+	}
+	prev, _ := TOTPCode(secret, now.Add(-30*time.Second))
+	if _, ok := VerifyTOTP(secret, prev, now); !ok {
+		t.Fatal("previous step (skew) rejected")
+	}
+	old, _ := TOTPCode(secret, now.Add(-5*time.Minute))
+	if _, ok := VerifyTOTP(secret, old, now); ok && old != c {
+		t.Fatal("old code accepted")
+	}
+}
+
+func TestMFAReplayAndReload(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "users.json")
+	s, _ := Open(path)
+	s.Set("eve", "password1", false, false)
+	secret, _ := NewTOTPSecret()
+	if err := s.SetMFA("eve", secret); err != nil {
+		t.Fatal(err)
+	}
+	code, _ := TOTPCode(secret, time.Now())
+	if !s.VerifyMFA("eve", code) {
+		t.Fatal("valid code rejected")
+	}
+	if s.VerifyMFA("eve", code) {
+		t.Fatal("replayed code accepted")
+	}
+
+	// a second process (CLI) changes the file: the running store sees it
+	other, _ := Open(path)
+	other.Set("frank", "password2", false, false)
+	s.lastCheck = time.Time{}
+	if _, ok := s.Get("frank"); !ok {
+		t.Fatal("external change not reloaded")
+	}
+	other.Delete("frank")
+	s.lastCheck = time.Time{}
+	if _, ok := s.Get("frank"); ok {
+		t.Fatal("external delete not reloaded")
+	}
+	if u, _ := s.Get("eve"); !u.HasMFA() {
+		t.Fatal("mfa lost")
 	}
 }

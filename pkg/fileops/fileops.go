@@ -73,6 +73,9 @@ func New(root string, opt Options) (*FS, error) {
 func (f *FS) Root() string { return f.root }
 
 func (f *FS) hidden(name, rel string) bool {
+	if IsUploadPart(name) {
+		return true
+	}
 	if !f.opt.ShowHidden && strings.HasPrefix(name, ".") {
 		return true
 	}

@@ -1,0 +1,168 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Build the front-end with npm on the runner instead of Docker.
+  FRONTEND_BUILDER: local
+
+jobs:
+  # Front-end + Go build, lint and tests
+  build-test:
+    name: Build and Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v6
+      with:
+        fetch-depth: 0  # `git rev-parse` in the Makefile and full history for version info
+
+    - name: Set up Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version-file: 'go.mod'
+
+    - name: Download Go dependencies
+      run: |
+        go mod download
+        go mod verify
+
+    # Builds frontend/dist and seals it into pkg/assets/bundle.bin, which
+    # //go:embed needs before go vet / go test / go build can run.
+    - name: Build front-end and asset bundle
+      run: make assets FRONTEND_BUILDER=local
+
+    - name: Run gofmt check
+      run: |
+        UNFORMATTED="$(gofmt -l .)"
+        if [ -n "$UNFORMATTED" ]; then
+          echo "❌ Code is not formatted. Please run 'make fmt' (gofmt -s -w .)"
+          echo "Files that need formatting:"
+          echo "$UNFORMATTED"
+          exit 1
+        fi
+        echo "✅ Code formatting is correct"
+
+    - name: Run go vet
+      run: |
+        echo "Running go vet..."
+        go vet ./...
+        echo "✅ go vet passed"
+
+    - name: Run Go unit tests with coverage
+      run: |
+        echo "Running Go unit tests with race detection..."
+        go test -race -timeout=10m -coverprofile=coverage.out -covermode=atomic ./...
+        go tool cover -func=coverage.out | tail -n 1
+        go tool cover -html=coverage.out -o coverage.html
+
+    - name: Upload coverage
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: coverage
+        path: |
+          coverage.out
+          coverage.html
+        if-no-files-found: ignore
+        retention-days: 7
+
+    - name: Run front-end unit tests
+      run: make test-frontend FRONTEND_BUILDER=local
+
+    - name: Build application
+      run: make local FRONTEND_BUILDER=local
+
+    - name: Smoke test binary
+      run: |
+        BIN=./build/fmweb_linux_amd64
+        test -x "$BIN" || { echo "❌ $BIN not found"; ls -la ./build; exit 1; }
+        "$BIN" version
+        "$BIN" --help > /dev/null
+        "$BIN" web --help > /dev/null
+        "$BIN" create-tls --help > /dev/null
+        "$BIN" add-user --help > /dev/null
+        echo "✅ Binary executes correctly"
+
+  # Static security analysis and secret scanning
+  security:
+    name: Security Analysis
+    runs-on: ubuntu-latest
+    needs: build-test
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      # security-events: write  # needed only if the SARIF upload below is enabled
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v6
+      with:
+        fetch-depth: 0  # trufflehog scans the commit range
+
+    - name: Set up Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version-file: 'go.mod'
+
+    # gosec type-checks the packages, so the embedded bundle must exist.
+    - name: Build front-end and asset bundle
+      run: make assets FRONTEND_BUILDER=local
+
+    - name: Run Gosec Security Scanner
+      uses: securego/gosec@92ed8df32846e85d4e81b0b62012567afddfdc95
+      with:
+        args: '-concurrency 1 -quiet -no-fail -fmt sarif -out gosec-results.sarif ./...'
+      timeout-minutes: 5
+
+    - name: Upload gosec report
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: gosec-results
+        path: gosec-results.sarif
+        if-no-files-found: ignore
+        retention-days: 7
+
+    #- name: Upload SARIF file
+    #  uses: github/codeql-action/upload-sarif@v4
+    #  if: always() && hashFiles('gosec-results.sarif') != ''
+    #  with:
+    #    sarif_file: gosec-results.sarif
+
+    - name: Check for hardcoded secrets
+      uses: trufflesecurity/trufflehog@d411fff7b8879a62509f3fa98c07f247ac089a51
+      with:
+        path: ./
+        base: ${{ github.event.pull_request.base.sha || github.event.before }}
+        head: ${{ github.event.pull_request.head.sha || github.sha }}
+        extra_args: --only-verified

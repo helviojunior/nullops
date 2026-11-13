@@ -2,6 +2,7 @@ package fileops
 
 import (
 	"archive/zip"
+	"bytes"
 	"os"
 	"path/filepath"
 	"testing"
@@ -122,20 +123,111 @@ func TestZipRoundtripAndZipSlip(t *testing.T) {
 
 func TestUploadChunks(t *testing.T) {
 	fs, root := newFS(t)
-	if _, _, err := fs.UploadChunk("", "u.bin", 0, []byte("abc"), false, nil); err != nil {
+	id := "0123456789abcdef0123456789abcdef"
+	up := func(off int64, data string, last bool) (*Entry, int64, error) {
+		return fs.UploadChunk(UploadRequest{Name: "u.bin", ID: id, Offset: off, Total: 6, Data: []byte(data), Last: last})
+	}
+	if _, _, err := up(0, "abc", false); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := fs.UploadChunk("", "u.bin", 10, []byte("x"), false, nil); err == nil {
+	if n, _ := fs.UploadStatus("", "u.bin", id); n != 3 {
+		t.Fatalf("resume offset %d", n)
+	}
+	if l, _ := fs.List(""); len(l.Entries) != 0 {
+		t.Fatal("part file listed")
+	}
+	if _, _, err := up(5, "x", false); err == nil {
 		t.Fatal("out-of-order chunk accepted")
 	}
-	e, n, err := fs.UploadChunk("", "u.bin", 3, []byte("def"), true, nil)
+	e, n, err := up(3, "def", true)
 	if err != nil || n != 6 || e == nil {
 		t.Fatal(err)
 	}
 	if b, _ := os.ReadFile(filepath.Join(root, "u.bin")); string(b) != "abcdef" {
 		t.Fatalf("got %q", b)
 	}
-	if _, _, err := fs.UploadChunk("", "x.exe", 0, nil, true, []string{"txt"}); err == nil {
+	if _, _, err := fs.UploadChunk(UploadRequest{Name: "x.exe", Total: 0, Last: true, AllowExt: []string{"txt"}}); err == nil {
 		t.Fatal("extension filter ignored")
 	}
+	if _, _, err := fs.UploadChunk(UploadRequest{Name: "big", Total: 100, Data: []byte("a"), MaxSize: 10}); err == nil {
+		t.Fatal("size limit ignored")
+	}
+	if _, _, err := fs.UploadChunk(UploadRequest{Name: "a", ID: "../../x", Last: true}); err == nil {
+		t.Fatal("bad upload id accepted")
+	}
+}
+
+func TestZipTo(t *testing.T) {
+	fs, _ := newFS(t)
+	fs.Mkdir("", "d")
+	fs.WriteText("d/a.txt", "1")
+	fs.WriteText("b.txt", "2")
+	var buf bytes.Buffer
+	if err := fs.ZipTo(&buf, []string{"d", "b.txt"}); err != nil {
+		t.Fatal(err)
+	}
+	zr, err := zip.NewReader(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := map[string]bool{}
+	for _, f := range zr.File {
+		names[f.Name] = true
+	}
+	if !names["d/a.txt"] || !names["b.txt"] {
+		t.Fatalf("entries: %v", names)
+	}
+}
+
+func TestDocumentEncodingsAndConflict(t *testing.T) {
+	fs, root := newFS(t)
+	// UTF-16LE with BOM and CRLF, as written by Windows PowerShell ISE
+	ps := []byte{0xff, 0xfe}
+	for _, r := range "Write-Host \"oi\"\r\nexit 0\r\n" {
+		ps = append(ps, byte(r), 0)
+	}
+	os.WriteFile(filepath.Join(root, "s.ps1"), ps, 0o644)
+	doc, err := fs.ReadDocument("s.ps1")
+	if err != nil || doc.Encoding != "utf-16le" || doc.EOL != "crlf" || doc.Content != "Write-Host \"oi\"\nexit 0\n" {
+		t.Fatalf("read: %+v %v", doc, err)
+	}
+	_, h2, err := fs.WriteDocument("s.ps1", doc.Content+"# x\n", doc.Encoding, doc.EOL, doc.Hash, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := os.ReadFile(filepath.Join(root, "s.ps1"))
+	if raw[0] != 0xff || raw[1] != 0xfe || !bytesContainsUTF16(raw, "# x\r\n") {
+		t.Fatalf("encoding/eol not preserved: % x", raw[:8])
+	}
+	// stale hash -> conflict; force overrides
+	if _, _, err := fs.WriteDocument("s.ps1", "a\n", doc.Encoding, doc.EOL, doc.Hash, false); err == nil {
+		t.Fatal("conflict not detected")
+	}
+	if _, _, err := fs.WriteDocument("s.ps1", "a\n", doc.Encoding, doc.EOL, h2, false); err != nil {
+		t.Fatal("current hash rejected:", err)
+	}
+	if _, _, err := fs.WriteDocument("s.ps1", "b\n", "utf-8-bom", "lf", "deadbeef", true); err != nil {
+		t.Fatal("force rejected:", err)
+	}
+	raw, _ = os.ReadFile(filepath.Join(root, "s.ps1"))
+	if string(raw) != "\xef\xbb\xbfb\n" {
+		t.Fatalf("utf-8 bom: %q", raw)
+	}
+}
+
+func bytesContainsUTF16(raw []byte, s string) bool {
+	var want []byte
+	for _, r := range s {
+		want = append(want, byte(r), 0)
+	}
+	return string(raw) != "" && containsBytes(raw, want)
+}
+
+func containsBytes(a, b []byte) bool {
+	for i := 0; i+len(b) <= len(a); i++ {
+		if string(a[i:i+len(b)]) == string(b) {
+			return true
+		}
+	}
+	return false
 }

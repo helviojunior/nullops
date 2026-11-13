@@ -111,6 +111,8 @@ export function DialogProvider({ children }) {
   };
 
   const isAlert = dialog?.type === "alert";
+  // confirm() may offer a third choice: resolves with "extra".
+  const extra = dialog?.type === "confirm" && dialog.extraLabel;
   const isPrompt = dialog?.type === "prompt";
 
   return (
@@ -122,12 +124,17 @@ export function DialogProvider({ children }) {
         title={dialog?.title}
         description={dialog?.description}
         icon={<DialogIcon variant={dialog?.variant} />}
-        size={dialog?.size || (isPrompt ? "md" : "sm")}
+        size={dialog?.size || (isPrompt || extra ? "md" : "sm")}
         footer={
           <>
             {!isAlert && (
               <Button variant="outline" onClick={() => close(isPrompt ? null : false)} disabled={busy}>
                 {dialog?.cancelLabel}
+              </Button>
+            )}
+            {extra && (
+              <Button variant="outline" onClick={() => close("extra")} disabled={busy}>
+                {dialog.extraLabel}
               </Button>
             )}
             <Button

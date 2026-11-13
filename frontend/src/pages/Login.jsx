@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Navigate } from "react-router-dom";
-import { FolderLock, Loader2, ServerCrash, ShieldAlert } from "lucide-react";
+import { ArrowLeft, FolderLock, KeyRound, Loader2, ServerCrash, ShieldAlert, UserRound } from "lucide-react";
 import { useAuth } from "contexts/AuthContext";
 import { useI18n } from "i18n";
 import { Button } from "components/ui/button";
@@ -12,9 +12,12 @@ import { LanguageSelect, ThemeToggle } from "components/layout/AppLayout";
 // Authentication screen: the documented exception to the 100%-width rule
 // (centered 420px card, standard login layout).
 export default function Login({ darkMode, setDarkMode }) {
-  const { status, user, expired, encrypted, login, connect } = useAuth();
+  const { status, user, expired, encrypted, loginStart, loginMFA, loginPassword, connect } = useAuth();
   const { t, tf } = useI18n();
+  // user -> [mfa] -> password
+  const [step, setStep] = useState("user");
   const [username, setUsername] = useState("");
+  const [code, setCode] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -23,17 +26,41 @@ export default function Login({ darkMode, setDarkMode }) {
 
   const disabled = status !== "ready" || busy;
 
+  const restart = () => {
+    setStep("user");
+    setCode("");
+    setPassword("");
+    setError("");
+  };
+
+  const showError = (err) => {
+    if (err.retryAfter) setError(tf("login.throttled", { s: err.retryAfter }));
+    else if (err.message === "Invalid code") setError(t("login.invalidCode"));
+    else if (err.message === "Invalid credentials") setError(t("login.invalid"));
+    else if (err.message === "Login expired") {
+      restart();
+      setError(t("login.stepExpired"));
+    } else setError(err.message);
+  };
+
   const submit = async (e) => {
     e.preventDefault();
     setBusy(true);
     setError("");
     try {
-      await login(username, password);
+      if (step === "user") {
+        const next = await loginStart(username.trim());
+        if (next !== "done") setStep(next);
+      } else if (step === "mfa") {
+        await loginMFA(code.trim());
+        setStep("password");
+      } else {
+        await loginPassword(username.trim(), password);
+      }
     } catch (err) {
-      setPassword("");
-      if (err.retryAfter) setError(tf("login.throttled", { s: err.retryAfter }));
-      else if (err.status === 200) setError(t("login.invalid"));
-      else setError(err.message);
+      if (step === "password") setPassword("");
+      if (step === "mfa") setCode("");
+      showError(err);
     } finally {
       setBusy(false);
     }
@@ -96,34 +123,81 @@ export default function Login({ darkMode, setDarkMode }) {
             )}
 
             <form onSubmit={submit} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="username">{t("login.username")}</Label>
-                <Input
-                  id="username"
-                  autoComplete="username"
-                  autoFocus
-                  required
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  disabled={disabled}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="password">{t("login.password")}</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  autoComplete="current-password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  disabled={disabled}
-                  error={!!error}
-                />
-              </div>
+              {step !== "user" && (
+                <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm">
+                  <UserRound className="h-4 w-4 text-muted-foreground" />
+                  <span className="flex-1 truncate font-medium">{username}</span>
+                  <button
+                    type="button"
+                    onClick={restart}
+                    className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    <ArrowLeft className="h-3.5 w-3.5" /> {t("login.changeUser")}
+                  </button>
+                </div>
+              )}
+
+              {step === "user" && (
+                <div className="space-y-2">
+                  <Label htmlFor="username">{t("login.username")}</Label>
+                  <Input
+                    id="username"
+                    autoComplete="username"
+                    autoFocus
+                    required
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    disabled={disabled}
+                    error={!!error}
+                  />
+                </div>
+              )}
+
+              {step === "mfa" && (
+                <div className="space-y-2">
+                  <Label htmlFor="code" className="flex items-center gap-1.5">
+                    <KeyRound className="h-4 w-4" /> {t("login.mfaCode")}
+                  </Label>
+                  <Input
+                    id="code"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    pattern="[0-9 ]{6,7}"
+                    maxLength={7}
+                    autoFocus
+                    required
+                    value={code}
+                    onChange={(e) => setCode(e.target.value.replace(/[^0-9 ]/g, ""))}
+                    disabled={disabled}
+                    error={!!error}
+                    className="text-center font-mono text-lg tracking-[0.4em]"
+                  />
+                  <p className="text-xs text-muted-foreground">{t("login.mfaHint")}</p>
+                </div>
+              )}
+
+              {step === "password" && (
+                <div className="space-y-2">
+                  {/* hidden username keeps password managers working */}
+                  <input type="text" name="username" autoComplete="username" value={username} readOnly hidden />
+                  <Label htmlFor="password">{t("login.password")}</Label>
+                  <Input
+                    id="password"
+                    type="password"
+                    autoComplete="current-password"
+                    autoFocus
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    disabled={disabled}
+                    error={!!error}
+                  />
+                </div>
+              )}
+
               {error && <p className="text-sm text-red-500">{error}</p>}
               <Button type="submit" className="w-full" loading={busy} disabled={disabled}>
-                {t("login.submit")}
+                {step === "password" ? t("login.submit") : t("login.next")}
               </Button>
             </form>
           </CardContent>
