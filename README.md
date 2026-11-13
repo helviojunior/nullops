@@ -138,7 +138,7 @@ host does not need Node). With Node installed, use `FRONTEND_BUILDER=local`.
 ```bash
 make                  # front-end → obfuscated bundle → binary for the local platform
 make all              # cross-compile: windows/linux/darwin × amd64/386/arm64
-make OBFUSCATE_JS=1   # also obfuscate the JavaScript served to the browser
+make OBFUSCATE_JS=0   # skip the JavaScript obfuscation (on by default; faster, easier to debug)
 make test             # Go tests (requires `make assets` once)
 make test-frontend    # front-end unit tests (vitest)
 make clean

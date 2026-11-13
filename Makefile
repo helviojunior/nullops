@@ -10,8 +10,8 @@ FRONTEND_DIST=./frontend/dist
 ASSET_BLOB=./pkg/assets/bundle.bin
 # docker (default; host needs no Node) | local (uses npm on the host)
 FRONTEND_BUILDER ?= docker
-# 1 = also obfuscate the JavaScript shipped to the browser (javascript-obfuscator)
-OBFUSCATE_JS ?= 0
+# 1 (default) = obfuscate the JavaScript shipped to the browser (javascript-obfuscator); 0 = plain minified build
+OBFUSCATE_JS ?= 1
 PEPPER_FILE=./build/.pepper
 
 ifdef VER

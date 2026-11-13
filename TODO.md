@@ -125,7 +125,7 @@ Legend: `[x]` done · `[ ]` pending · `[~]` partial
       binaries plus `SHA256SUMS`; Dependabot for Go, npm and Actions
 - [x] Per-build obfuscation key: `make` generates `build/.pepper`, gives it to `assetpack` and to the binary
       (`-ldflags -X …BuildPepper`), so each build seals the front-end under a different key
-- [x] Optional obfuscation of the JavaScript shipped to the browser: `make OBFUSCATE_JS=1` (javascript-obfuscator,
+- [x] Obfuscation of the JavaScript shipped to the browser, on by default (`make OBFUSCATE_JS=0` disables it; javascript-obfuscator,
       no `eval` / self-defending, compatible with the CSP)
 
 ## 3. Roadmap
