@@ -6,9 +6,15 @@ const randomId = () =>
   Array.from(crypto.getRandomValues(new Uint8Array(8)), (b) => b.toString(16).padStart(2, "0")).join("");
 
 /**
- * Collaborative editing client for one pad (ot.js client state machine):
- *   synchronized -> (local edit) -> awaiting confirm(outstanding)
- *   awaiting     -> (local edit) -> awaiting with buffer(outstanding, buffer)
+ * Collaborative editing client for one pad (ot.js client state machine).
+ *
+ * Local edits are composed into `buffer` and sent only after the user stops
+ * typing for `debounceMs` (2 s), so typing does not flood the server with one
+ * request per key. At most one operation is in flight (`outstanding`); while it
+ * waits for its acknowledgement, new edits keep accumulating in the buffer.
+ * Remote operations are transformed against both, so nothing is lost while
+ * edits are waiting to be sent. flush() sends right away (Ctrl+S, leaving).
+ *
  * Server changes arrive in order through a long poll; our own changes in
  * that stream acknowledge the outstanding operation.
  *
@@ -26,6 +32,8 @@ export class PadClient {
     this.outstanding = null;
     this.buffer = null;
     this.running = false;
+    this.debounceMs = 2000;
+    this.timer = null;
   }
 
   async open() {
@@ -40,26 +48,36 @@ export class PadClient {
     this.pollLoop();
   }
 
+  // Sends what is buffered (best effort) and stops.
   stop() {
+    this.flush();
     this.running = false;
   }
 
   get pending() {
-    return !!this.outstanding;
+    return !!(this.outstanding || this.buffer);
   }
 
-  // A local edit (already applied to the editor).
+  // A local edit (already applied to the editor): buffered until the user
+  // pauses for debounceMs.
   local(op) {
     if (op.isNoop()) return;
-    if (!this.outstanding) {
-      this.outstanding = op;
-      this.send(op, this.rev);
-    } else if (!this.buffer) {
-      this.buffer = op;
-    } else {
-      this.buffer = this.buffer.compose(op);
-    }
+    this.buffer = this.buffer ? this.buffer.compose(op) : op;
+    this.hooks.status?.("pending");
+    clearTimeout(this.timer);
+    this.timer = setTimeout(() => this.flush(), this.debounceMs);
+  }
+
+  // Sends the buffered edits now (unless an operation is already in flight:
+  // then they go out as soon as it is acknowledged).
+  flush() {
+    clearTimeout(this.timer);
+    this.timer = null;
+    if (this.outstanding || !this.buffer) return;
+    this.outstanding = this.buffer;
+    this.buffer = null;
     this.hooks.status?.("saving");
+    this.send(this.outstanding, this.rev);
   }
 
   async send(op, rev) {
@@ -83,14 +101,10 @@ export class PadClient {
 
   serverAck() {
     if (!this.outstanding) return;
-    if (this.buffer) {
-      this.outstanding = this.buffer;
-      this.buffer = null;
-      this.send(this.outstanding, this.rev);
-    } else {
-      this.outstanding = null;
-      this.hooks.status?.("synced");
-    }
+    this.outstanding = null;
+    if (!this.buffer) this.hooks.status?.("synced");
+    else if (!this.timer) this.flush(); // the user already paused: send now
+    else this.hooks.status?.("pending");
   }
 
   serverOp(op) {
@@ -98,16 +112,18 @@ export class PadClient {
       const [o1, op1] = TextOperation.transform(this.outstanding, op);
       this.outstanding = o1;
       op = op1;
-      if (this.buffer) {
-        const [b1, op2] = TextOperation.transform(this.buffer, op);
-        this.buffer = b1;
-        op = op2;
-      }
+    }
+    if (this.buffer) {
+      const [b1, op2] = TextOperation.transform(this.buffer, op);
+      this.buffer = b1;
+      op = op2;
     }
     this.hooks.applyRemote(op);
   }
 
   async reload(err) {
+    clearTimeout(this.timer);
+    this.timer = null;
     this.outstanding = null;
     this.buffer = null;
     try {
@@ -127,6 +143,8 @@ export class PadClient {
         if (!this.running) return;
         failures = 0;
         if (res.snapshot) {
+          clearTimeout(this.timer);
+          this.timer = null;
           this.outstanding = null;
           this.buffer = null;
           this.rev = res.snapshot.rev;
@@ -140,7 +158,7 @@ export class PadClient {
           this.rev = res.rev;
         }
         this.hooks.editors?.(res.editors || []);
-        if (!this.outstanding) this.hooks.status?.("synced");
+        if (!this.outstanding && !this.buffer) this.hooks.status?.("synced");
       } catch (err) {
         if (!this.running) return;
         if (err instanceof ApiError && (err.status === 401 || err.message === "Pad not found")) {

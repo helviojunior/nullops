@@ -3,7 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { EditorView, basicSetup } from "codemirror";
 import { Annotation, Compartment, EditorState } from "@codemirror/state";
 import { oneDark } from "@codemirror/theme-one-dark";
-import { CloudOff, Copy, FileText, Loader2, RefreshCw, Users, CheckCircle2 } from "lucide-react";
+import { CloudOff, Copy, FileText, Loader2, PencilLine, RefreshCw, Users, CheckCircle2 } from "lucide-react";
 import { useApi } from "contexts/AuthContext";
 import { useToast } from "contexts/ToastContext";
 import { useI18n } from "i18n";
@@ -41,6 +41,7 @@ export default function PadEditor() {
   const [editors, setEditors] = useState([]);
   const [error, setError] = useState("");
   const [chars, setChars] = useState(0);
+  const clientRef = useRef(null);
 
   useEffect(() => {
     let alive = true;
@@ -65,6 +66,13 @@ export default function PadEditor() {
         setError(errorText(err, lang));
       },
     });
+
+    clientRef.current = client;
+    // leaving or hiding the page sends what is still buffered
+    const flushNow = () => client.flush();
+    const onVisibility = () => document.visibilityState === "hidden" && client.flush();
+    window.addEventListener("pagehide", flushNow);
+    document.addEventListener("visibilitychange", onVisibility);
 
     setStatus("loading");
     setError("");
@@ -107,7 +115,10 @@ export default function PadEditor() {
 
     return () => {
       alive = false;
-      client.stop();
+      window.removeEventListener("pagehide", flushNow);
+      document.removeEventListener("visibilitychange", onVisibility);
+      client.stop(); // also sends what is still buffered
+      clientRef.current = null;
       viewRef.current?.destroy();
       viewRef.current = null;
     };
@@ -118,6 +129,18 @@ export default function PadEditor() {
     viewRef.current?.dispatch({ effects: themeComp.current.reconfigure(dark ? oneDark : []) });
   }, [dark]);
 
+  // Ctrl/⌘+S: send now instead of waiting for the 2 s pause
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        clientRef.current?.flush();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   const copyAll = async () => {
     try {
       await navigator.clipboard.writeText(viewRef.current?.state.doc.toString() || "");
@@ -127,7 +150,7 @@ export default function PadEditor() {
     }
   };
 
-  const StatusIcon = { synced: CheckCircle2, saving: RefreshCw, offline: CloudOff, loading: Loader2 }[status];
+  const StatusIcon = { synced: CheckCircle2, saving: RefreshCw, pending: PencilLine, offline: CloudOff, loading: Loader2 }[status];
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -137,7 +160,15 @@ export default function PadEditor() {
           <div className="truncate font-mono text-sm">{name}</div>
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <StatusIcon
-              className={`h-3.5 w-3.5 ${status === "synced" ? "text-emerald-500" : status === "offline" ? "text-red-500" : "animate-spin"}`}
+              className={`h-3.5 w-3.5 ${
+                status === "synced"
+                  ? "text-emerald-500"
+                  : status === "offline"
+                  ? "text-red-500"
+                  : status === "pending"
+                  ? "text-amber-500"
+                  : "animate-spin"
+              }`}
             />
             {t("pad.status." + status)} · {tf("pad.chars", { n: chars })}
           </div>

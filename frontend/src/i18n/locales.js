@@ -79,6 +79,7 @@ export const LOCALES = {
     "pad.status.loading": "Loading…",
     "pad.status.synced": "Saved",
     "pad.status.saving": "Syncing…",
+    "pad.status.pending": "Unsaved changes — sync after a 2 s pause (Ctrl+S to send now)",
     "pad.status.offline": "Offline — retrying",
 
     "tree.title": "Folders",
@@ -272,6 +273,7 @@ export const LOCALES = {
     "pad.status.loading": "Carregando…",
     "pad.status.synced": "Salvo",
     "pad.status.saving": "Sincronizando…",
+    "pad.status.pending": "Alterações pendentes — sincroniza após 2 s sem digitar (Ctrl+S envia agora)",
     "pad.status.offline": "Sem conexão — tentando novamente",
 
     "tree.title": "Pastas",

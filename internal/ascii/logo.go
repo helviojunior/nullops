@@ -11,17 +11,18 @@ import (
 // white "_" cursor. Each line is split in segments so the colors never shift
 // the alignment.
 var iconLines = [][2]string{ // {red chevron, white cursor}
-	{`  __`, ``},
-	{`  \ \__`, ``},
-	{`   \_  \__`, ``},
-	{`     \__  \__`, ``},
-	{`        \__  \__`, ``},
-	{`           >    >`, ``},
-	{`        __/  __/`, ``},
-	{`     __/  __/`, ``},
-	{`   _/  __/`, ``},
-	{`  / __/`, `    _____________`},
-	{` /_/`, `      (_____________)`},
+	{`  ______`, ``},
+	{`  \     \`, ``},
+	{`   \     \`, ``},
+	{`    \     \`, ``},
+	{`     \     \`, ``},
+	{`      \     \`, ``},
+	{`      /     /`, ``},
+	{`     /     /`, ``},
+	{`    /     /`, ``},
+	{`   /     /`, ``},
+	{`  /_____/`, `       ______________`},
+	{`         `, `      |______________|`},
 }
 
 // "NullOps" in the slant figlet font: "Null" white, "Ops" red (as in the logo).
@@ -57,9 +58,9 @@ func Logo() string {
 		switch j := i - nameTop; {
 		case j >= 0 && j < len(nameLines):
 			b.WriteString(white + nameLines[j][0] + red + nameLines[j][1] + reset)
-		case j == len(nameLines)+1:
-			b.WriteString(gray + "Web Resource Manager" + reset)
 		case j == len(nameLines)+2:
+			b.WriteString(gray + " Web Resource Manager" + reset)
+		case j == len(nameLines)+3:
 			b.WriteString(gray + fmt.Sprintf("Ver: %s-%s", version.Version, version.GitHash) + reset)
 		}
 		b.WriteString("\n")

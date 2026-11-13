@@ -79,6 +79,7 @@ describe("PadClient state machine", () => {
       const op = new TextOperation().retain(at).insert(s).retain(x.st.text.length - at);
       x.st.text = op.apply(x.st.text);
       x.c.local(op);
+      x.c.flush(); // the debounce is covered by its own test below
     };
     // deliver queued sends to the server, then stream history to both clients
     const flush = () => {
@@ -106,5 +107,42 @@ describe("PadClient state machine", () => {
     expect(server.text).toBe(">> hello world!");
     expect(A.st.text).toBe(server.text);
     expect(B.st.text).toBe(server.text);
+  });
+});
+
+describe("PadClient debounce", () => {
+  it("sends one operation after a pause instead of one per key, merging remote edits meanwhile", async () => {
+    const { PadClient } = await import("./padClient");
+    let text = "abc";
+    const sent = [];
+    const c = new PadClient("p", async () => ({}), {
+      applyRemote: (op) => (text = op.apply(text)),
+      resync: () => {},
+    });
+    c.debounceMs = 40;
+    c.send = (op, rev) => sent.push({ op, rev });
+    const type = (s) => {
+      const op = new TextOperation().retain(text.length).insert(s);
+      text = op.apply(text);
+      c.local(op);
+    };
+    type("1");
+    type("2");
+    // a remote edit arrives while ours are still buffered
+    c.serverOp(new TextOperation().insert(">").retain(3));
+    c.rev = 1;
+    type("3");
+    expect(sent.length).toBe(0);
+    await new Promise((r) => setTimeout(r, 80));
+    expect(sent.length).toBe(1);
+    expect(sent[0].rev).toBe(1);
+    // the single buffered operation applies on the server's text
+    expect(sent[0].op.apply(">abc")).toBe(">abc123");
+    expect(text).toBe(">abc123");
+    // flush() sends immediately (Ctrl+S / leaving the page)
+    c.serverAck();
+    type("4");
+    c.flush();
+    expect(sent.length).toBe(2);
   });
 });
