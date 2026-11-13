@@ -40,6 +40,22 @@ images, SVG and PDF open in the viewer, with previous / next inside the folder.
 | --- | --- |
 | ![Code editor](docs/images/editor.png) | ![Image preview](docs/images/preview.png) |
 
+**Encrypted payload** — every `/api` request and response travels inside an AES-256-GCM envelope (`iv` +
+`data`), on top of HTTPS. Below, the real traffic captured while opening a folder (the screenshot script records
+it and draws it in an inspector-style panel).
+
+![Encrypted /api traffic](docs/images/encrypted-traffic.png)
+
+**Upload links and transfers** — *Request upload* creates a public link for a folder; whoever has it can send
+files without an account (they are saved as `name-<epoch>.ext`). Your own downloads and uploads show their overall
+progress in the header and on the Transfers page.
+
+| Upload link | Public upload page |
+| --- | --- |
+| ![Upload link dialog](docs/images/request-upload.png) | ![Public upload page](docs/images/public-upload.png) |
+
+![Transfers page](docs/images/transfers.png)
+
 **PastePad** — shared text pads edited by several users at the same time (here `admin` and `ana`).
 
 ![PastePad with two editors](docs/images/pastepad.png)
