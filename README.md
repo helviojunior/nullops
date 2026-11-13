@@ -60,6 +60,7 @@ The screenshots are generated with demo data by `make screenshots` (Docker + Pla
 | --- | --- |
 | `nullops create-tls` | Creates a self-signed certificate (`--host`, `--days`, `--force`), imports one (`--cert`, `--key`) or gets one from Let's Encrypt (`--acme --domain files.example.com [--acme-email] [--acme-staging]`) |
 | `nullops add-user`   | Adds or updates a user (`-u`, `-p` / prompt / `--generate`, `--readonly`, `--update`, `--set-password`, `--mfa` / `--no-mfa`) |
+| `nullops mfa-qr`   | Shows a user's MFA QR code in the terminal (ASCII), with the setup key, to enroll a new authenticator app |
 | `nullops list-users` | Lists users (access, MFA, dates) |
 | `nullops del-user`   | Deletes a user and revokes its sessions |
 | `nullops sessions`   | Lists active sessions; `sessions revoke <id-prefix> \| --user <name> \| --all` |

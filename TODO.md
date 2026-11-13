@@ -47,6 +47,8 @@ Legend: `[x]` done · `[ ]` pending · `[~]` partial
 - [x] Login throttling per IP (5 failures → 5 min lockout, MFA and password failures count); constant-time checks
 - [x] `list-users`, `del-user` (also revokes the user's sessions), `add-user --update` keeps the password unless
       `-p` / `--generate` / `--set-password`
+- [x] `mfa-qr -u <name>`: prints a user's TOTP QR code in the terminal (ASCII art) with the setup key, to enroll
+      a new authenticator app without changing the secret
 - [x] `sessions` / `sessions revoke <id-prefix> | --user <name> | --all`; a running server drops a revoked
       session within ~5 s
 - [x] `users.json` reloaded automatically when it changes on disk (no restart after `add-user` / `del-user`)

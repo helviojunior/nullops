@@ -29,6 +29,7 @@ var rootCmd = &cobra.Command{
    - nullops add-user -u admin
    - nullops add-user -u bob -p 'S3cret!' --readonly
    - nullops add-user -u bob --update
+   - nullops mfa-qr -u bob
 
    - nullops web
    - nullops web -r /data -b 0.0.0.0 -p 8443
