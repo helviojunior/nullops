@@ -16,6 +16,44 @@ nullops web -r /data -b 0.0.0.0 -p 8443
 
 > The original Python implementation lives in the `python` branch.
 
+![File browser with the folder tree](docs/images/files.png)
+
+## Screenshots
+
+**Sign in** — in steps: user, then the authenticator code (only for users with MFA), then the password.
+
+| Sign in | MFA code |
+| --- | --- |
+| ![Sign-in screen](docs/images/login.png) | ![MFA step](docs/images/login-mfa.png) |
+
+**Managing files** — every row has quick actions (preview, download, edit) and a menu with rename, copy, move,
+permissions and delete. Copy and move use a folder picker; files can also be dragged onto a folder.
+
+| Actions menu | Move to another folder |
+| --- | --- |
+| ![Row actions menu](docs/images/actions-menu.png) | ![Folder picker](docs/images/move-picker.png) |
+
+**Editing and previewing** — text files open in the editor with syntax highlighting (here a PowerShell script);
+images, SVG and PDF open in the viewer, with previous / next inside the folder.
+
+| Editor | Preview |
+| --- | --- |
+| ![Code editor](docs/images/editor.png) | ![Image preview](docs/images/preview.png) |
+
+**PastePad** — shared text pads edited by several users at the same time (here `admin` and `ana`).
+
+![PastePad with two editors](docs/images/pastepad.png)
+
+**Account security and light theme** — each user can turn on TOTP MFA by scanning a QR code; the interface
+has dark and light themes and English / Portuguese.
+
+| Enable MFA | Light theme |
+| --- | --- |
+| ![MFA enrollment](docs/images/account-mfa.png) | ![Light theme](docs/images/files-light.png) |
+
+The screenshots are generated with demo data by `make screenshots` (Docker + Playwright, see
+`tools/screenshots/`).
+
 ## Subcommands
 
 | Command | What it does |
@@ -156,6 +194,7 @@ make all              # cross-compile: windows/linux/darwin × amd64/386/arm64
 make OBFUSCATE_JS=0   # skip the JavaScript obfuscation (on by default; faster, easier to debug)
 make test             # Go tests (requires `make assets` once)
 make test-frontend    # front-end unit tests (vitest)
+make screenshots      # regenerate the README screenshots (Docker + Playwright)
 make clean
 ```
 

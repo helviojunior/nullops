@@ -25,7 +25,7 @@ BUILDENV=`go version | cut -d' ' -f 3,4 | sed 's/ /_/g'`
 BUILDTIME=`date -u +'%Y-%m-%dT%H:%M:%SZ'`
 
 
-.PHONY: help local windows linux mac all clean hooks fmt frontend assets test test-frontend prepare get-version pepper
+.PHONY: help local windows linux mac all clean hooks fmt frontend assets test test-frontend prepare get-version pepper screenshots
 
 default: local
 
@@ -72,6 +72,17 @@ test-frontend:	   ## Run the front-end unit tests (vitest)
 	else \
 		DOCKER_BUILDKIT=1 docker build --target test $(FRONTEND_DIR) || exit 1 ; \
 	fi
+
+PLAYWRIGHT_IMAGE ?= mcr.microsoft.com/playwright/python:v1.47.0-jammy
+
+screenshots: prepare	## Regenerate the README screenshots in docs/images (Docker + Playwright)
+	@W=$$(mktemp -d) ; \
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "$$(cat ${TARGET}/.ldflags)" -o $$W/nullops . || exit 1 ; \
+	bash tools/screenshots/make-demo.sh $$W/demo || exit 1 ; \
+	cp tools/screenshots/shoot.py tools/screenshots/run.sh $$W/ ; mkdir -p $$W/out ; \
+	docker run --rm -v $$W:/work $(PLAYWRIGHT_IMAGE) bash /work/run.sh || exit 1 ; \
+	mkdir -p docs/images && cp $$W/out/*.png docs/images/ ; \
+	echo "Screenshots updated in docs/images (work dir: $$W)."
 
 get-version:
 	@mkdir -p ${TARGET} ; \
