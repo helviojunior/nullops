@@ -3,6 +3,7 @@ package server
 import (
 	"archive/zip"
 	"bytes"
+	"context"
 	"crypto/ecdh"
 	"crypto/hkdf"
 	"crypto/rand"
@@ -11,6 +12,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -26,11 +28,12 @@ import (
 )
 
 type env struct {
-	t     *testing.T
-	srv   *httptest.Server
-	users *auth.Store
-	store *session.SQLiteStore
-	root  string
+	t          *testing.T
+	cfgForTest Config
+	srv        *httptest.Server
+	users      *auth.Store
+	store      *session.SQLiteStore
+	root       string
 }
 
 func newEnv(t *testing.T, mutate func(*Config)) *env {
@@ -62,7 +65,7 @@ func newEnv(t *testing.T, mutate func(*Config)) *env {
 	s := newServer(cfg)
 	ts := httptest.NewServer(s.Handler())
 	t.Cleanup(ts.Close)
-	return &env{t: t, srv: ts, users: users, store: st, root: root}
+	return &env{t: t, cfgForTest: cfg, srv: ts, users: users, store: st, root: root}
 }
 
 // client is a minimal Go port of frontend/src/lib/{crypto,api}.js.
@@ -361,5 +364,40 @@ func TestPastePadOverHTTP(t *testing.T) {
 	// anonymous sessions cannot reach pads
 	if r := e.connect().call("pad_list", map[string]any{}); r["_status"] != float64(401) {
 		t.Fatalf("unauthenticated pad access: %v", r)
+	}
+}
+
+// Ctrl+C must stop the server promptly even while a PastePad long poll
+// (up to 25 s) is open.
+func TestShutdownWithOpenLongPoll(t *testing.T) {
+	e := newEnv(t, nil)
+	e.srv.Close() // use our own server/listener below
+	srv := newServer(e.cfgForTest)
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- srv.Serve(ctx, ln) }()
+
+	c := (&env{t: t, srv: &httptest.Server{URL: "http://" + ln.Addr().String()}}).connect()
+	c.login("alice", "alicepass1")
+	c.call("pad_create", map[string]string{"name": "p"})
+	go c.raw("pad_poll", map[string]any{"name": "p", "client": "X", "rev": 0})
+	time.Sleep(200 * time.Millisecond) // the poll is now waiting
+
+	start := time.Now()
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("shutdown returned %v", err)
+		}
+		if d := time.Since(start); d > 2*time.Second {
+			t.Fatalf("shutdown took %s", d)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("server did not stop")
 	}
 }

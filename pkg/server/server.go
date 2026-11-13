@@ -68,6 +68,11 @@ type Server struct {
 	api      *api.API
 	limiter  *loginLimiter
 	http     *http.Server
+
+	// every request context derives from base; cancelling it on shutdown
+	// ends the PastePad long polls so the server stops right away
+	base       context.Context
+	cancelBase context.CancelFunc
 }
 
 // New builds a server.
@@ -89,6 +94,7 @@ func newServer(cfg Config) *Server {
 		}},
 		limiter: newLoginLimiter(),
 	}
+	s.base, s.cancelBase = context.WithCancel(context.Background())
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/", s.handleAPI)
 	mux.Handle("/", s.logAccess(assets.Handler()))
@@ -96,6 +102,7 @@ func newServer(cfg Config) *Server {
 		Addr:              cfg.Addr,
 		Handler:           s.traceRequests(securityHeaders(mux)),
 		ReadHeaderTimeout: 15 * time.Second,
+		BaseContext:       func(net.Listener) context.Context { return s.base },
 		IdleTimeout:       120 * time.Second,
 		// TLS handshake errors ("bad certificate" from browsers that do not
 		// trust the self-signed cert yet) and connection noise: debug only.
@@ -116,6 +123,11 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	return s.Serve(ctx, ln)
+}
+
+// Serve serves on ln until ctx is cancelled.
+func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 	errc := make(chan error, 1)
 	go func() {
 		if s.cfg.TLS != nil {
@@ -131,12 +143,19 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 		}
 		return err
 	case <-ctx.Done():
+		// wake up long polls first, then stop accepting and drain
+		s.cancelBase()
 		sctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		return s.http.Shutdown(sctx)
+		if err := s.http.Shutdown(sctx); err != nil {
+			// a request still running (e.g. a large download) after the grace
+			// period: close the remaining connections instead of failing
+			log.Debug("forcing shutdown", "err", err)
+			_ = s.http.Close()
+		}
+		return nil
 	}
 }
-
 func securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
