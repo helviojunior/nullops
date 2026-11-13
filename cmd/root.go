@@ -13,6 +13,7 @@ import (
 var globalOpts = struct {
 	DataDir string
 	Debug   bool
+	Verbose int
 	Silence bool
 }{}
 
@@ -36,12 +37,18 @@ var rootCmd = &cobra.Command{
 		if cmd.CalledAs() != "version" && !globalOpts.Silence {
 			fmt.Println(ascii.Logo())
 		}
-		if globalOpts.Silence {
-			log.EnableSilence()
+		v := globalOpts.Verbose
+		if globalOpts.Debug && v < 2 {
+			v = 2
 		}
-		if globalOpts.Debug && !globalOpts.Silence {
-			log.EnableDebug()
-			log.Debug("debug logging enabled")
+		switch {
+		case globalOpts.Silence:
+			log.EnableSilence()
+		default:
+			log.SetVerbosity(v)
+			if v > 0 {
+				log.Debug("verbose logging enabled", "level", v)
+			}
 		}
 		return nil
 	},
@@ -76,6 +83,7 @@ func Execute() {
 func init() {
 	rootCmd.PersistentFlags().StringVar(&globalOpts.DataDir, "data-dir", datadir.Default,
 		"Directory holding the TLS certificate/key and the user database")
-	rootCmd.PersistentFlags().BoolVarP(&globalOpts.Debug, "debug-log", "D", false, "Enable debug logging")
+	rootCmd.PersistentFlags().CountVarP(&globalOpts.Verbose, "verbose", "v", "Verbosity level: -v debug (TLS/HTTP errors, read calls), -vv trace (every request)")
+	rootCmd.PersistentFlags().BoolVarP(&globalOpts.Debug, "debug-log", "D", false, "Enable full debug logging (same as -vv)")
 	rootCmd.PersistentFlags().BoolVarP(&globalOpts.Silence, "quiet", "q", false, "Silence (almost all) logging")
 }

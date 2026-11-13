@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"path"
 	"strings"
+	"time"
 
 	"github.com/helviojunior/fmweb/pkg/api"
 	"github.com/helviojunior/fmweb/pkg/log"
@@ -44,7 +45,20 @@ var opNames = map[string]string{
 func auditAction(r *http.Request, user, action string, plain []byte, err error) {
 	op, ok := opNames[action]
 	if !ok {
-		return // list/stat/search/info are not logged
+		// list/stat/search/info: debug only (-v)
+		if log.Verbosity() >= 1 {
+			var p api.Payload
+			_ = json.Unmarshal(plain, &p)
+			kv := []any{"user", user, "ip", clientIP(r), "path", "/" + p.Path}
+			if p.Query != "" {
+				kv = append(kv, "query", p.Query)
+			}
+			if err != nil {
+				kv = append(kv, "err", err.Error())
+			}
+			log.Debug(action, kv...)
+		}
+		return
 	}
 	var p api.Payload
 	_ = json.Unmarshal(plain, &p)
@@ -97,4 +111,40 @@ func listPaths(p api.Payload) string {
 		out[i] = "/" + x
 	}
 	return strings.Join(out, ", ")
+}
+
+// statusWriter captures the response status for the trace log.
+type statusWriter struct {
+	http.ResponseWriter
+	status int
+	bytes  int64
+}
+
+func (w *statusWriter) WriteHeader(code int) {
+	w.status = code
+	w.ResponseWriter.WriteHeader(code)
+}
+
+func (w *statusWriter) Write(b []byte) (int, error) {
+	if w.status == 0 {
+		w.status = http.StatusOK
+	}
+	n, err := w.ResponseWriter.Write(b)
+	w.bytes += int64(n)
+	return n, err
+}
+
+// traceRequests logs every HTTP request at -vv.
+func traceRequests(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if log.Verbosity() < 2 {
+			next.ServeHTTP(w, r)
+			return
+		}
+		start := time.Now()
+		sw := &statusWriter{ResponseWriter: w}
+		next.ServeHTTP(sw, r)
+		log.Debug("http", "method", r.Method, "path", r.URL.Path, "status", sw.status,
+			"bytes", sw.bytes, "ms", time.Since(start).Milliseconds(), "ip", clientIP(r))
+	})
 }

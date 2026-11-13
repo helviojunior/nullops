@@ -42,6 +42,7 @@ Legend: `[x]` done · `[ ]` pending · `[~]` partial
       (`-y/--yes` for non-interactive use), red banner in the UI; a TLS server refuses unencrypted clients
 - [x] Console log: page access (`/`), login (user, IP, User-Agent), logout, and every file operation
       (upload, download, open, edit, create, rename, delete, copy, move, chmod, zip/tar, extract) with failures
+- [x] Verbosity levels (`-q`, default, `-v`, `-vv`): TLS handshake / HTTP server errors only show at debug (`-v`)
 - [x] Upload extension allow-list (`--allow-ext`), hidden files (`--show-hidden`), exclusion globs (`--exclude`)
 
 ### File operations
@@ -91,7 +92,7 @@ Legend: `[x]` done · `[ ]` pending · `[~]` partial
 - [ ] Per-user home directory (restrict each user to a subfolder)
 - [ ] `del-user` / `list-users` subcommands
 - [ ] MFA (TOTP) at login
-- [ ] Audit log also in a file / JSON format (today: console only)
+- [ ] Audit log also in a file / JSON format, with timestamps (today: console only)
 - [ ] Real client IP behind a reverse proxy (`X-Forwarded-For` from trusted proxies)
 - [ ] ACME / Let's Encrypt in `create-tls`
 

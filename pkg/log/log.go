@@ -2,7 +2,9 @@ package log
 
 import (
 	"fmt"
+	stdlog "log"
 	"os"
+	"strings"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/log"
@@ -26,15 +28,59 @@ func init() {
 	Logger.SetLevel(log.InfoLevel)
 }
 
-// EnableDebug enabled debug logging and caller reporting
+// verbosity: -1 quiet, 0 normal, 1 debug (-v), 2 trace (-vv)
+var verbosity = 0
+
+// SetVerbosity configures the level:
+//
+//	<0  only errors (quiet)
+//	 0  info: access, login and file operations (default)
+//	 1  debug: plus TLS/HTTP server errors and read-only API calls
+//	 2+ trace: plus every HTTP request and the source location of each line
+func SetVerbosity(v int) {
+	verbosity = v
+	switch {
+	case v < 0:
+		Logger.SetLevel(log.ErrorLevel)
+	case v == 0:
+		Logger.SetLevel(log.InfoLevel)
+	case v == 1:
+		Logger.SetLevel(log.DebugLevel)
+	default:
+		Logger.SetLevel(log.DebugLevel)
+		Logger.SetReportCaller(true)
+	}
+}
+
+// Verbosity returns the configured verbosity level.
+func Verbosity() int { return verbosity }
+
+// EnableDebug enables debug logging and caller reporting (same as -vv).
 func EnableDebug() {
-	Logger.SetLevel(log.DebugLevel)
-	Logger.SetReportCaller(true)
+	SetVerbosity(2)
 }
 
 // EnableSilence will silence most logs, except this written with Print
 func EnableSilence() {
+	verbosity = -1
 	Logger.SetLevel(log.FatalLevel + 100)
+}
+
+// debugWriter adapts the standard library logger (net/http ErrorLog) to the
+// debug level: TLS handshake failures, broken connections, etc.
+type debugWriter struct{ msg string }
+
+func (w debugWriter) Write(p []byte) (int, error) {
+	line := strings.TrimRight(string(p), "\r\n")
+	if line != "" {
+		Logger.Debug(w.msg, "detail", line)
+	}
+	return len(p), nil
+}
+
+// StdDebugLogger returns a *stdlog.Logger whose output goes to Debug.
+func StdDebugLogger(msg string) *stdlog.Logger {
+	return stdlog.New(debugWriter{msg: msg}, "", 0)
 }
 
 // Debug logs debug messages

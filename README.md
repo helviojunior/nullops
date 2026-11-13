@@ -24,7 +24,14 @@ fmweb web -r /data -b 0.0.0.0 -p 8443
 | `fmweb web`        | Starts the server (`-r` root, `-b` bind, `-p` port, `--readonly`, `--show-hidden`, `--exclude`, `--allow-ext`, `--no-tls`, `-y`, `--no-auth`) |
 | `fmweb version`    | Version and build information |
 
-Global flags: `--data-dir` (default `./fmweb`), `-D` debug, `-q` quiet.
+Global flags: `--data-dir` (default `./fmweb`), `-v`/`-vv` verbosity, `-D` (= `-vv`), `-q` quiet.
+
+| Level | Flag | What is shown |
+| --- | --- | --- |
+| quiet | `-q` | errors only |
+| info | *(default)* | page access, login/logout, file operations |
+| debug | `-v` | plus TLS/HTTP server errors (e.g. `tls: bad certificate` from a browser that does not trust the self-signed certificate yet) and read calls (`list`, `search`, `info`) |
+| trace | `-vv` / `-D` | plus every HTTP request (method, path, status, bytes, ms) and the source location of each line |
 
 ### `--no-tls`: no payload encryption
 
@@ -47,7 +54,7 @@ cannot downgrade the session to clear text.
 | `login` / `login failed` / `login blocked` / `logout` | `user`, `ip`, `ua` (login) |
 | `upload`, `download`, `open`, `edit`, `create`, `mkdir`, `rename`, `delete`, `copy`, `move`, `chmod`, `zip`, `tar`, `extract` | `user`, `ip`, `path(s)`, plus `size` / `dest` / `mode` depending on the action |
 
-Failures are logged as `WARN … failed` with `err`. Listing and search are not logged.
+Failures are logged as `WARN … failed` with `err`. Listing and search only show up with `-v`.
 
 ### User data (`./fmweb`)
 

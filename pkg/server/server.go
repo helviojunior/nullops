@@ -80,10 +80,12 @@ func New(cfg Config) (*Server, error) {
 	mux.Handle("/", logAccess(assets.Handler()))
 	s.http = &http.Server{
 		Addr:              cfg.Addr,
-		Handler:           securityHeaders(mux),
+		Handler:           traceRequests(securityHeaders(mux)),
 		ReadHeaderTimeout: 15 * time.Second,
 		IdleTimeout:       120 * time.Second,
-		ErrorLog:          nil,
+		// TLS handshake errors ("bad certificate" from browsers that do not
+		// trust the self-signed cert yet) and connection noise: debug only.
+		ErrorLog: log.StdDebugLogger("http server"),
 	}
 	if cfg.TLS != nil {
 		s.http.TLSConfig = &tls.Config{
