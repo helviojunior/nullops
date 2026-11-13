@@ -75,6 +75,14 @@ Legend: `[x]` done · `[ ]` pending · `[~]` partial
       `.nullops-upload-<id>.part`; per-file size limit `--max-upload 2G`
 - [x] Encrypted streamed download with progress
 - [x] Download a folder or a multiple selection as a zip built on the fly (streamed, no temporary file)
+- [x] **Upload links** ("Request upload" on a folder): public `/public/upload/<token>` page (8-char
+      `[A-Za-z0-9]` token, 3 h, unlimited uses, multiple files, drag and drop, encrypted anonymous session);
+      request stored in SQLite (folder, requester, expiry, uploads, bytes); files saved as `name-<epoch>.ext`,
+      never replacing anything (atomic hard link); copy / revoke active links; invalid tokens count towards the
+      IP lockout; audit log entries
+- [x] File name sanitization: uploads are cleaned (path parts, control/bidi/zero-width characters, Windows
+      reserved characters and device names, leading dots, length); creating/renaming refuses such names;
+      archive entries with them are rejected; the UI never displays invisible characters
 - [x] **Transfers**: header icon with a ring showing the overall progress (like Firefox) and a `/transfers` page
       (progress, speed, time left, cancel, cancel all, clear finished); transfers keep running while browsing
 - [x] Cancel downloads and uploads (the server logs `download canceled`; a canceled upload resumes later)

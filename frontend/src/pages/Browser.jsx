@@ -14,6 +14,7 @@ import {
   FolderPlus,
   Home,
   KeyRound,
+  Link2,
   Loader2,
   PackageOpen,
   Pencil,
@@ -36,10 +37,12 @@ import { Checkbox } from "components/ui/checkbox";
 import { ActionMenu } from "components/ui/menu";
 import FileIcon from "components/files/FileIcon";
 import FolderPicker from "components/files/FolderPicker";
+import RequestUploadDialog from "components/files/RequestUploadDialog";
 import { canDrop, getDragPaths, isInternalDrag, setDragPaths, useTransfer } from "lib/useTransfer";
 import { errorText } from "lib/errors";
 import {
   baseName,
+  displayName,
   cn,
   humanSize,
   isArchive,
@@ -132,6 +135,7 @@ export default function Browser() {
   const fileInput = useRef(null);
   const transfer = useTransfer();
   const [picker, setPicker] = useState(null); // {paths, action}
+  const [requestOpen, setRequestOpen] = useState(false);
   const [dropTarget, setDropTarget] = useState(null);
   const [view, setView] = useState(() => {
     try {
@@ -465,6 +469,9 @@ export default function Browser() {
             <Button variant="outline" size="sm" onClick={newFile}>
               <FilePlus2 className="h-4 w-4" /> {t("browser.newFile")}
             </Button>
+            <Button variant="outline" size="sm" onClick={() => setRequestOpen(true)} title={t("reqUpload.button")}>
+              <Link2 className="h-4 w-4" /> {t("reqUpload.button")}
+            </Button>
             <Button size="sm" onClick={() => fileInput.current?.click()}>
               <Upload className="h-4 w-4" /> {t("browser.upload")}
             </Button>
@@ -643,7 +650,7 @@ export default function Browser() {
                         <FileIcon entry={e} />
                       )}
                       <span className="truncate" title={e.path}>
-                        {results ? e.path : e.name}
+                        {displayName(results ? e.path : e.name)}
                       </span>
                       {e.is_link && <span className="text-xs text-muted-foreground">↪</span>}
                     </div>
@@ -719,6 +726,8 @@ export default function Browser() {
           </div>
         </div>
       )}
+
+      <RequestUploadDialog open={requestOpen} path={path} onClose={() => setRequestOpen(false)} />
 
       <FolderPicker
         open={!!picker}

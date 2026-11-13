@@ -37,6 +37,8 @@ const PT = {
   "A pad with this name already exists": "Já existe um pad com este nome",
   "Invalid pad name (allowed: letters, digits, . _ -)": "Nome de pad inválido (permitido: letras, números, . _ -)",
   "Pad is too large": "O pad é grande demais",
+  "This upload link is invalid or has expired": "Este link de upload é inválido ou expirou",
+  "Uploads are disabled": "Os envios estão desativados",
 };
 
 export function errorText(err, lang) {

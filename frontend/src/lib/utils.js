@@ -128,3 +128,9 @@ export function sortEntries(entries, key, dir) {
     return cmp(a, b) * mul || a.name.localeCompare(b.name);
   });
 }
+
+// File name for display: drops control, bidi and zero-width characters so a
+// name cannot disguise itself (e.g. "fdp.exe" shown as "exe.pdf").
+// eslint-disable-next-line no-control-regex
+const INVISIBLE_RE = /[\u0000-\u001f\u007f-\u009f؜​-‏‪-‮⁠⁦-⁩﻿]/g;
+export const displayName = (name) => String(name || "").replace(INVISIBLE_RE, "");

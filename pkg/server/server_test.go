@@ -11,12 +11,14 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -25,6 +27,7 @@ import (
 	"github.com/helviojunior/nullops/pkg/fileops"
 	"github.com/helviojunior/nullops/pkg/pads"
 	"github.com/helviojunior/nullops/pkg/session"
+	"github.com/helviojunior/nullops/pkg/uploadreq"
 )
 
 type env struct {
@@ -57,8 +60,12 @@ func newEnv(t *testing.T, mutate func(*Config)) *env {
 	if err != nil {
 		t.Fatal(err)
 	}
+	reqs, err := uploadreq.Open(st.DB())
+	if err != nil {
+		t.Fatal(err)
+	}
 	cfg := Config{Users: users, FS: fsys, Sessions: st, SessionTTL: time.Hour, Title: "test",
-		Pads: pads.NewManager(padStore)}
+		Pads: pads.NewManager(padStore), UploadReqs: reqs}
 	if mutate != nil {
 		mutate(&cfg)
 	}
@@ -400,4 +407,75 @@ func TestShutdownWithOpenLongPoll(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("server did not stop")
 	}
+}
+
+func TestPublicUploadLink(t *testing.T) {
+	e := newEnv(t, nil)
+	os.MkdirAll(filepath.Join(e.root, "inbox"), 0o755)
+	os.WriteFile(filepath.Join(e.root, "inbox", "report.pdf"), []byte("original"), 0o644)
+
+	ro := e.connect()
+	ro.login("reader", "readerpass1")
+	if r := ro.call("uploadreq_create", map[string]string{"path": "inbox"}); r["ok"] != false {
+		t.Fatalf("read-only user created a link: %v", r)
+	}
+	alice := e.connect()
+	alice.login("alice", "alicepass1")
+	res := alice.call("uploadreq_create", map[string]string{"path": "inbox"})["result"].(map[string]any)
+	token := res["token"].(string)
+	if len(token) != 8 || res["url"] != "/public/upload/"+token {
+		t.Fatalf("link: %v", res)
+	}
+
+	// an anonymous visitor (no login) uses the link
+	anon := e.connect()
+	info := anon.call("public_upload_info", map[string]string{"token": token})
+	if info["ok"] != true || info["result"].(map[string]any)["requested_by"] != "alice" {
+		t.Fatalf("info: %v", info)
+	}
+	send := func(name, data, id string) map[string]any {
+		return anon.call("public_upload", map[string]any{"token": token, "name": name, "upload_id": id,
+			"offset": 0, "size": len(data), "last": true, "chunk": crypto.B64.EncodeToString([]byte(data))})
+	}
+	for i, id := range []string{"aaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbb"} {
+		if r := send("report.pdf", fmt.Sprintf("copy %d", i), id); r["ok"] != true {
+			t.Fatalf("upload %d: %v", i, r)
+		}
+	}
+	if r := send("../../.\u202eevil\n.sh", "x", "cccccccccccccccc"); r["ok"] != true {
+		t.Fatalf("hostile name: %v", r)
+	}
+	names, _ := filepath.Glob(filepath.Join(e.root, "inbox", "*"))
+	var got []string
+	for _, n := range names {
+		got = append(got, filepath.Base(n))
+	}
+	if b, _ := os.ReadFile(filepath.Join(e.root, "inbox", "report.pdf")); string(b) != "original" {
+		t.Fatal("existing file replaced")
+	}
+	if len(got) != 4 {
+		t.Fatalf("files in inbox: %v", got)
+	}
+	for _, n := range got {
+		if strings.HasPrefix(n, ".") || strings.ContainsAny(n, "\n\u202e/") {
+			t.Fatalf("unsafe stored name %q", n)
+		}
+	}
+	// the anonymous session cannot do anything else
+	if r := anon.call("list", map[string]string{"path": ""}); r["_status"] != float64(401) {
+		t.Fatalf("anonymous list: %v", r)
+	}
+	// revoked links stop working
+	alice.call("uploadreq_revoke", map[string]string{"token": token})
+	if r := anon.call("public_upload_info", map[string]string{"token": token}); r["ok"] != false {
+		t.Fatalf("revoked link works: %v", r)
+	}
+	// guessing tokens locks the IP out
+	for i := 0; i < maxFails; i++ {
+		anon.call("public_upload_info", map[string]string{"token": "AAAAAAAA"})
+	}
+	if r := anon.call("public_upload_info", map[string]string{"token": "BBBBBBBB"}); r["error"] != "Too many attempts" {
+		t.Fatalf("no lockout: %v", r)
+	}
+	_ = uploadreq.Validity
 }

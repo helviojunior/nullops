@@ -23,6 +23,7 @@ import (
 	"github.com/helviojunior/nullops/pkg/server"
 	"github.com/helviojunior/nullops/pkg/session"
 	"github.com/helviojunior/nullops/pkg/tlsutil"
+	"github.com/helviojunior/nullops/pkg/uploadreq"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )
@@ -150,6 +151,11 @@ func runWeb(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("pads: %w", err)
 	}
 	padMgr := pads.NewManager(padStore)
+	uploadReqs, err := uploadreq.Open(db.DB())
+	if err != nil {
+		return fmt.Errorf("upload requests: %w", err)
+	}
+	uploadReqs.Purge(time.Now())
 
 	addr := net.JoinHostPort(webOpts.Bind, strconv.Itoa(webOpts.Port))
 	srv, err := server.New(server.Config{
@@ -164,6 +170,7 @@ func runWeb(cmd *cobra.Command, args []string) error {
 		TrustedProxies: trusted,
 		MaxUpload:      maxUpload,
 		Pads:           padMgr,
+		UploadReqs:     uploadReqs,
 		AllowedExt:     webOpts.AllowExt,
 		Users:          store,
 		FS:             fsys,

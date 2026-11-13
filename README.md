@@ -128,6 +128,24 @@ folder being browsed. Drag its right edge to resize it (double-click resets the
 width). Hide or show it with the button at the top left of the header. The
 width and open/closed state are remembered per browser.
 
+### Upload links (Request upload)
+
+The **Request upload** button of a folder creates a public link,
+`/public/upload/<token>` (8 characters, `[A-Za-z0-9]`), that lets anyone send
+files into that folder **without an account**, for **3 hours**, as many times as
+needed. The page accepts several files at once and drag and drop, and the files
+still travel over the encrypted channel.
+
+- Uploaded files never replace anything: they are saved as `name-<epoch>.ext`
+  (`-<epoch>-1`, `-2`… if two arrive in the same second).
+- File names are sanitized (path parts, control/bidi/zero-width characters,
+  Windows-reserved characters and names, leading dots, length).
+- The request (folder, who asked, expiry, uploads) is stored in
+  `~/.nullops/nullops.db`; active links can be copied or revoked in the same
+  dialog. Guessing tokens counts towards the per-IP lockout, and every use is
+  in the audit log.
+- `--max-upload` and `--allow-ext` apply; read-only users cannot create links.
+
 ### Transfers
 
 Downloads and uploads run in the background while you keep browsing. The

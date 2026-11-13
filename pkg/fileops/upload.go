@@ -3,10 +3,12 @@ package fileops
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 )
 
 // Uploads are written to a hidden part file named after a client-chosen
@@ -34,9 +36,15 @@ type UploadRequest struct {
 	Last     bool
 	MaxSize  int64 // 0 = unlimited
 	AllowExt []string
+	// Unique: never replace an existing file; the upload is stored as
+	// name-EPOCH.ext (public upload links).
+	Unique bool
 }
 
 func (f *FS) uploadTarget(dirRel, name, id string, allowExt []string) (dir, final, part string, err error) {
+	// names of uploaded files come from the client: make them safe instead of
+	// failing (status, chunks and finalize all see the same name)
+	name = SanitizeName(name)
 	if err := ValidateName(name); err != nil {
 		return "", "", "", err
 	}
@@ -102,11 +110,12 @@ func (f *FS) UploadChunk(u UploadRequest) (*Entry, int64, error) {
 	if u.Total >= 0 && end > u.Total {
 		return nil, 0, errf("Invalid offset")
 	}
+	u.Name = SanitizeName(u.Name)
 	_, final, part, err := f.uploadTarget(u.Dir, u.Name, u.ID, u.AllowExt)
 	if err != nil {
 		return nil, 0, err
 	}
-	if st, err := os.Lstat(final); err == nil && (st.IsDir() || st.Mode()&os.ModeSymlink != 0) {
+	if st, err := os.Lstat(final); !u.Unique && err == nil && (st.IsDir() || st.Mode()&os.ModeSymlink != 0) {
 		return nil, 0, errf("Target already exists")
 	}
 	if st, err := os.Lstat(part); err == nil && !st.Mode().IsRegular() {
@@ -141,9 +150,66 @@ func (f *FS) UploadChunk(u UploadRequest) (*Entry, int64, error) {
 		return nil, 0, errf("Cannot write file")
 	}
 	_ = os.Chmod(part, 0o644)
+	if u.Unique {
+		dest, err := placeUnique(part, filepath.Dir(final), u.Name, time.Now().Unix())
+		if err != nil {
+			return nil, 0, errf("Cannot finalize upload")
+		}
+		return f.entry(dest), end, nil
+	}
 	os.Remove(final)
 	if err := os.Rename(part, final); err != nil {
 		return nil, 0, errf("Cannot finalize upload")
 	}
 	return f.entry(final), end, nil
+}
+
+// doubleExt keeps compound extensions together: a.tar.gz -> a-EPOCH.tar.gz.
+var doubleExt = []string{".tar.gz", ".tar.bz2", ".tar.xz", ".tar.zst"}
+
+// UniqueName returns "stem-EPOCH.ext" (with "-n" before the extension when n > 0).
+func UniqueName(name string, epoch int64, n int) string {
+	stem, ext := name, filepath.Ext(name)
+	low := strings.ToLower(name)
+	for _, d := range doubleExt {
+		if strings.HasSuffix(low, d) && len(name) > len(d) {
+			ext = name[len(name)-len(d):]
+			break
+		}
+	}
+	stem = name[:len(name)-len(ext)]
+	if stem == "" { // ".bashrc"
+		stem, ext = name, ""
+	}
+	suffix := fmt.Sprintf("-%d", epoch)
+	if n > 0 {
+		suffix += fmt.Sprintf("-%d", n)
+	}
+	return stem + suffix + ext
+}
+
+// placeUnique moves src to a name that does not exist yet in dir. A hard
+// link fails atomically when the target exists, so nothing is ever replaced,
+// even with concurrent uploads; on filesystems without hard links it falls
+// back to check-then-rename.
+func placeUnique(src, dir, name string, epoch int64) (string, error) {
+	for n := 0; n < 1000; n++ {
+		dest := filepath.Join(dir, UniqueName(name, epoch, n))
+		err := os.Link(src, dest)
+		if err == nil {
+			os.Remove(src)
+			return dest, nil
+		}
+		if os.IsExist(err) {
+			continue
+		}
+		if _, statErr := os.Lstat(dest); statErr == nil {
+			continue
+		}
+		if err := os.Rename(src, dest); err != nil {
+			return "", err
+		}
+		return dest, nil
+	}
+	return "", errf("Cannot finalize upload")
 }

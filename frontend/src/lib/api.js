@@ -127,10 +127,13 @@ export class ApiClient {
   // same file again (same name, size and date) resumes where it stopped.
   // signal (AbortSignal) stops after the chunk in flight; what was sent stays
   // on the server and the next upload of the same file resumes from there.
-  async upload(path, file, onProgress, signal) {
-    const base = { path, name: file.name, upload_id: uploadId(file), size: file.size };
+  // opts.action / opts.extra: the public upload page uses "public_upload"
+  // with its token instead of a folder.
+  async upload(path, file, onProgress, signal, opts = {}) {
+    const action = opts.action || "upload";
+    const base = { path, name: file.name, upload_id: uploadId(file), size: file.size, ...(opts.extra || {}) };
     throwIfAborted(signal);
-    const status = await this.call("upload", { ...base, status: true });
+    const status = await this.call(action, { ...base, status: true });
     let offset = Math.min(status.received || 0, file.size);
     if (onProgress && offset) onProgress(offset, file.size);
     for (;;) {
@@ -139,7 +142,7 @@ export class ApiClient {
       const bytes = new Uint8Array(await file.slice(offset, end).arrayBuffer());
       const last = end >= file.size;
       const result = await withRetry(() =>
-        this.call("upload", { ...base, offset, last, chunk: b64urlEncode(bytes) })
+        this.call(action, { ...base, offset, last, chunk: b64urlEncode(bytes) })
       );
       offset = end;
       if (onProgress) onProgress(offset, file.size);

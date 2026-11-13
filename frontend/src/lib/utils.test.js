@@ -37,6 +37,12 @@ describe("formatting and types", () => {
     expect(humanSize(5 * 1024 * 1024)).toBe("5.0 MB");
   });
 
+  it("strips invisible characters for display", async () => {
+    const { displayName } = await import("./utils");
+    expect(displayName("inv\u202eoice\u202cfdp.exe")).toBe("invoicefdp.exe");
+    expect(displayName("a\nb\u200b.txt")).toBe("ab.txt");
+  });
+
   it("knows editable Windows scripts", () => {
     for (const n of ["a.ps1", "b.vbs", "c.cmd", "d.bat", "Makefile"]) expect(isEditable(n)).toBe(true);
     expect(isEditable("photo.png")).toBe(false);

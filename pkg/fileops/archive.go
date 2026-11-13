@@ -226,7 +226,7 @@ func (e *extractor) target(name string) (string, error) {
 		return "", errf("Unsafe path in archive")
 	}
 	for _, part := range strings.Split(n, "/") {
-		if part == ".." {
+		if part == ".." || unsafeNameChars(part) {
 			return "", errf("Unsafe path in archive")
 		}
 	}

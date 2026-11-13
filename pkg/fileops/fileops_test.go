@@ -5,7 +5,9 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 func newFS(t *testing.T) (*FS, string) {
@@ -230,4 +232,80 @@ func containsBytes(a, b []byte) bool {
 		}
 	}
 	return false
+}
+
+func TestUniqueUploadNeverReplaces(t *testing.T) {
+	fs, root := newFS(t)
+	os.WriteFile(filepath.Join(root, "report.pdf"), []byte("original"), 0o644)
+	up := func(id, data string) *Entry {
+		e, _, err := fs.UploadChunk(UploadRequest{Name: "report.pdf", ID: id, Total: int64(len(data)),
+			Data: []byte(data), Last: true, Unique: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return e
+	}
+	a := up("aaaaaaaaaaaaaaaa", "one")
+	b := up("bbbbbbbbbbbbbbbb", "two")
+	if a.Name == "report.pdf" || b.Name == a.Name {
+		t.Fatalf("names: %s %s", a.Name, b.Name)
+	}
+	if got, _ := os.ReadFile(filepath.Join(root, "report.pdf")); string(got) != "original" {
+		t.Fatal("existing file replaced")
+	}
+	for name, want := range map[string]string{
+		UniqueName("report.pdf", 1700000000, 0):    "report-1700000000.pdf",
+		UniqueName("backup.tar.gz", 1700000000, 0): "backup-1700000000.tar.gz",
+		UniqueName("README", 1700000000, 2):        "README-1700000000-2",
+		UniqueName(".env", 1700000000, 0):          ".env-1700000000",
+	} {
+		if name != want {
+			t.Fatalf("got %s want %s", name, want)
+		}
+	}
+}
+
+func TestSanitizeName(t *testing.T) {
+	cases := map[string]string{
+		"report.pdf":                 "report.pdf",
+		"../../etc/passwd":           "passwd",
+		`C:\Users\x\evil.exe`:        "evil.exe",
+		".htaccess":                  "htaccess",
+		"...":                        "upload",
+		"":                           "upload",
+		"name\nwith\r\nbreaks.txt":   "namewithbreaks.txt",
+		"inv\u202eoice\u202cfdp.exe": "invoicefdp.exe",
+		"zero\u200bwidth.txt":        "zerowidth.txt",
+		`a<b>c:d"e|f?g*.txt`:         "a_b_c_d_e_f_g_.txt",
+		"trailing. . ":               "trailing",
+		"CON.txt":                    "_CON.txt",
+		"nul":                        "_nul",
+		"  many   spaces .txt":       "many spaces .txt",
+		"ação ç 日本.txt":              "ação ç 日本.txt",
+		"bad\xffutf8.txt":            "badutf8.txt",
+	}
+	for in, want := range cases {
+		if got := SanitizeName(in); got != want {
+			t.Errorf("SanitizeName(%q) = %q, want %q", in, got, want)
+		}
+	}
+	long := strings.Repeat("é", 200) + ".tar"
+	got := SanitizeName(long)
+	if len(got) > MaxNameBytes || !strings.HasSuffix(got, ".tar") || !utf8.ValidString(got) {
+		t.Fatalf("truncation: %d bytes %q", len(got), got[len(got)-8:])
+	}
+	for _, bad := range []string{"a\nb", "x\u202ey", "CON", "lpt1.log", "z\u200b"} {
+		if ValidateName(bad) == nil {
+			t.Errorf("ValidateName accepted %q", bad)
+		}
+	}
+	// an upload with a hostile name lands safely, visible, inside the folder
+	fs, root := newFS(t)
+	e, _, err := fs.UploadChunk(UploadRequest{Name: "../.\u202eevil\n.sh", Total: 2, Data: []byte("hi"), Last: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e.Name != "evil.sh" || filepath.Dir(filepath.Join(root, e.Path)) != root {
+		t.Fatalf("stored as %q (%s)", e.Name, e.Path)
+	}
 }

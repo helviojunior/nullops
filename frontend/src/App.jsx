@@ -11,6 +11,7 @@ import Browser from "pages/Browser";
 import { Loader2 } from "lucide-react";
 import Viewer from "pages/Viewer";
 import Transfers from "pages/Transfers";
+import PublicUpload from "pages/PublicUpload";
 
 // The editor pulls CodeMirror in: loaded only when a file is opened.
 const Editor = lazy(() => import("pages/Editor"));
@@ -72,6 +73,8 @@ const router = createBrowserRouter([
     element: <Root />,
     children: [
       { path: "/login", element: <LoginRoute /> },
+      // public upload links: no sign-in, outside the app layout
+      { path: "/public/upload/:token", element: <PublicUpload /> },
       {
         element: <LayoutRoute />,
         children: [

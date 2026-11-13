@@ -114,10 +114,13 @@ func (f *FS) relOf(abs string) string {
 	return filepath.ToSlash(r)
 }
 
-// ValidateName rejects names that are empty, dot entries or contain separators.
+// ValidateName rejects names that are empty, dot entries, contain separators
+// or invisible characters (control, bidi, zero-width), are Windows device
+// names, or are too long.
 func ValidateName(name string) error {
 	if name == "" || name == "." || name == ".." ||
-		strings.ContainsAny(name, "/\\\x00") || len(name) > 255 {
+		strings.ContainsAny(name, "/\\\x00") || len(name) > 255 ||
+		unsafeNameChars(name) || reservedBase(name) {
 		return errf("Invalid name")
 	}
 	return nil

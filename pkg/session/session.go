@@ -246,6 +246,13 @@ func (m *Manager) Get(id string) *Session {
 			m.Destroy(id)
 			return nil
 		}
+		// sessions without login (sign-in in progress, public upload page)
+		// stay alive while they are used
+		s.mu.Lock()
+		if !s.authenticated {
+			s.expires = now.Add(PreAuthTTL)
+		}
+		s.mu.Unlock()
 		return s
 	}
 	if m.store == nil {

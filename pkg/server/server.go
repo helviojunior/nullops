@@ -31,6 +31,7 @@ import (
 	"github.com/helviojunior/nullops/pkg/log"
 	"github.com/helviojunior/nullops/pkg/pads"
 	"github.com/helviojunior/nullops/pkg/session"
+	"github.com/helviojunior/nullops/pkg/uploadreq"
 )
 
 const (
@@ -59,6 +60,8 @@ type Config struct {
 	FS         *fileops.FS
 	// Pads is the PastePad manager (nil = disabled).
 	Pads *pads.Manager
+	// UploadReqs stores the public upload links (nil = disabled).
+	UploadReqs *uploadreq.Store
 }
 
 // Server is the web server.
@@ -251,6 +254,11 @@ func (s *Server) handleAPI(w http.ResponseWriter, r *http.Request) {
 		writeSealed(w, sess, map[string]any{"ok": true})
 		return
 	}
+	// public upload page: anonymous (but encrypted) sessions
+	if action == "public_upload" || action == "public_upload_info" {
+		s.publicUpload(w, r, sess, action, body)
+		return
+	}
 	authed, user, ro := sess.Auth()
 	if !authed {
 		writeErr(w, http.StatusUnauthorized, "Not authenticated")
@@ -281,6 +289,15 @@ func (s *Server) handleAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	case "upload":
 		s.upload(w, r, sess, plain, caller)
+		return
+	}
+	if strings.HasPrefix(action, "uploadreq_") {
+		res, err := s.uploadReqAction(r, user, ro, action, plain)
+		if err != nil {
+			writeSealed(w, sess, map[string]any{"ok": false, "error": err.Error()})
+			return
+		}
+		writeSealed(w, sess, map[string]any{"ok": true, "result": res})
 		return
 	}
 	if strings.HasPrefix(action, "pad_") {
