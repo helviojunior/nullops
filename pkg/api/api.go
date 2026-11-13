@@ -108,6 +108,8 @@ func (a *API) run(action string, p *Payload, c Caller) (any, error) {
 		return fs.List(p.Path)
 	case "stat":
 		return fs.Stat(p.Path)
+	case "probe":
+		return fs.Probe(p.Path)
 	case "read":
 		s, err := fs.ReadText(p.Path)
 		if err != nil {
