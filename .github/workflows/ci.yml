@@ -139,7 +139,7 @@ jobs:
       run: make assets FRONTEND_BUILDER=local
 
     - name: Run Gosec Security Scanner
-      uses: securego/gosec@92ed8df32846e85d4e81b0b62012567afddfdc95
+      uses: securego/gosec@244f1f6f4d1d0d14f89e79a73dab1219eabb5228
       with:
         args: '-concurrency 1 -quiet -no-fail -fmt sarif -out gosec-results.sarif ./...'
       timeout-minutes: 5
