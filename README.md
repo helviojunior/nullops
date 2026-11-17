@@ -81,7 +81,7 @@ The screenshots are generated with demo data by `make screenshots` (Docker + Pla
 | `nullops list-users` | Lists users (access, MFA, dates) |
 | `nullops del-user`   | Deletes a user and revokes its sessions |
 | `nullops sessions`   | Lists active sessions; `sessions revoke <id-prefix> \| --user <name> \| --all` |
-| `nullops web`        | Starts the server (`-r` root, `-b` bind, `-p` port, `--readonly`, `--show-hidden`, `--exclude`, `--allow-ext`, `--max-upload`, `--audit-log`, `--trusted-proxy`, `--session-ttl`, `--no-tls`, `--allow-cleartext`, `-y`, `--no-auth`) |
+| `nullops web`        | Starts the server (`-r` root, `-b` bind, `-p` port, `--readonly`, `--show-hidden`, `--exclude`, `--allow-ext`, `--max-upload`, `--audit-log`, `--trusted-proxy`, `--session-ttl`, `--no-tls`, `--allow-cleartext`, `-y`, `--no-auth`, `--env`) |
 | `nullops version`    | Version and build information |
 
 Changes to users (`add-user`, `del-user`) and revoked sessions take effect on a running server within seconds.
@@ -107,6 +107,33 @@ Global flags: `--data-dir` (default `~/.nullops`), `-v`/`-vv` verbosity, `-D` (=
 | info | *(default)* | page access, login/logout, file operations |
 | debug | `-v` | plus TLS/HTTP server errors (e.g. `tls: bad certificate` from a browser that does not trust the self-signed certificate yet) and read calls (`list`, `search`, `info`) |
 | trace | `-vv` / `-D` | plus every HTTP request (method, path, status, bytes, ms) and the source location of each line |
+
+### `--env`: configure from environment variables
+
+With `--env`, any `web` flag **not** passed on the command line is read from a
+`NULLOPS_<FLAG>` environment variable. The flag name is upper-cased with dashes
+turned into underscores, so `-r/--root` → `NULLOPS_ROOT`, `-b/--bind` →
+`NULLOPS_BIND`, `-p/--port` → `NULLOPS_PORT`, `--no-tls` → `NULLOPS_NO_TLS`, and
+so on for every flag. Command-line flags take precedence, an empty variable is
+treated as unset, booleans accept `1/t/true/0/f/false`, and list flags
+(`--allow-ext`, `--trusted-proxy`) accept a comma-separated value. Handy for
+containers:
+
+```yaml
+# docker-compose.yml
+services:
+  nullops:
+    image: nullops
+    command: ["web", "--env"]
+    environment:
+      NULLOPS_ROOT: /data
+      NULLOPS_BIND: 0.0.0.0
+      NULLOPS_PORT: "8181"
+      NULLOPS_NO_TLS: "true"
+      NULLOPS_YES: "true"          # skip the --no-tls confirmation prompt
+    ports: ["8181:8181"]
+    volumes: ["./data:/data"]
+```
 
 ### `--no-tls`: obfuscated fallback (no real encryption)
 

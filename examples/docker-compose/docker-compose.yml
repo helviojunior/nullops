@@ -1,0 +1,32 @@
+
+services:
+  nullops:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      - NULLOPS_NO_TLS=${NULLOPS_NO_TLS:-false}
+      - NULLOPS_YES=${NULLOPS_YES:-true}
+    ports:
+      - ${NULLOPS_BIND:-127.0.0.1}:${NULLOPS_PORT:-8181}:8181
+    volumes:
+      - nullops-home:/u01
+      - ${NULLOPS_DATA_MOUNT:-nullops-data}:/data
+    healthcheck:
+      # The app listens on 8181. It serves https by default and http only with
+      # NULLOPS_NO_TLS=true, so try https (ignoring the self-signed cert) first
+      # and fall back to http.
+      test:
+        [
+          "CMD-SHELL",
+          "wget -q --no-check-certificate -O /dev/null https://localhost:8181/ || wget -q -O /dev/null http://localhost:8181/ || exit 1"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+volumes:
+  nullops-data:
+  nullops-home:

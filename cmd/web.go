@@ -26,6 +26,7 @@ import (
 	"github.com/helviojunior/nullops/pkg/tlsutil"
 	"github.com/helviojunior/nullops/pkg/uploadreq"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 	"golang.org/x/term"
 )
 
@@ -46,6 +47,7 @@ var webOpts = struct {
 	AuditLog       string
 	Trusted        []string
 	MaxUpload      string
+	Env            bool
 }{}
 
 var webCmd = &cobra.Command{
@@ -66,6 +68,11 @@ no user an "admin" account with a random password is created and printed once.`)
 }
 
 func runWeb(cmd *cobra.Command, args []string) error {
+	if webOpts.Env {
+		if err := applyEnvFlags(cmd); err != nil {
+			return err
+		}
+	}
 	if webOpts.NoTLS {
 		if err := confirmPlaintext(); err != nil {
 			return err
@@ -210,6 +217,36 @@ func runWeb(cmd *cobra.Command, args []string) error {
 
 var errAborted = errors.New("aborted by user")
 
+// applyEnvFlags fills every web flag that was NOT given on the command line
+// from a NULLOPS_<FLAG> environment variable: the flag name is upper-cased with
+// dashes turned into underscores, so --root/-r reads NULLOPS_ROOT, --no-tls
+// reads NULLOPS_NO_TLS, --port/-p reads NULLOPS_PORT, --bind/-b reads
+// NULLOPS_BIND, and so on for every other flag. Command-line flags take
+// precedence; an empty variable is treated as unset. Enabled by --env, which is
+// handy for container deployments. Booleans accept 1/t/true/0/f/false; list
+// flags (--allow-ext, --trusted-proxy) accept a comma-separated value.
+func applyEnvFlags(cmd *cobra.Command) error {
+	const prefix = "NULLOPS_"
+	var errs []string
+	cmd.Flags().VisitAll(func(f *pflag.Flag) {
+		if f.Changed || f.Name == "env" || f.Name == "help" {
+			return
+		}
+		val, ok := os.LookupEnv(prefix + strings.ReplaceAll(strings.ToUpper(f.Name), "-", "_"))
+		if !ok || val == "" {
+			return
+		}
+		if err := cmd.Flags().Set(f.Name, val); err != nil {
+			errs = append(errs, fmt.Sprintf("%s%s (--%s): %v",
+				prefix, strings.ReplaceAll(strings.ToUpper(f.Name), "-", "_"), f.Name, err))
+		}
+	})
+	if len(errs) > 0 {
+		return fmt.Errorf("invalid environment value(s): %s", strings.Join(errs, "; "))
+	}
+	return nil
+}
+
 // confirmPlaintext warns that --no-tls drops the browser from AES-GCM down to
 // the obfuscated channel (or to cleartext with --allow-cleartext) and asks the
 // operator to confirm ([y/N], default no).
@@ -324,6 +361,7 @@ func init() {
 	f.StringSliceVar(&webOpts.Trusted, "trusted-proxy", nil, "IP/CIDR of a reverse proxy whose X-Forwarded-For / X-Real-IP is trusted (repeatable)")
 	f.StringVar(&webOpts.MaxUpload, "max-upload", "0", "Maximum size of one uploaded file, e.g. 500M, 2G (0 = unlimited)")
 	f.IntVar(&webOpts.SessionTTL, "session-ttl", 12*3600, "Session lifetime in seconds after login (default 12h); sessions are kept in <data-dir>/nullops.db")
+	f.BoolVar(&webOpts.Env, "env", false, "Read any flag not given on the command line from NULLOPS_<FLAG> env vars (e.g. NULLOPS_ROOT, NULLOPS_BIND, NULLOPS_PORT, NULLOPS_NO_TLS)")
 }
 
 // parseSize parses "0", "1024", "500K", "500M", "2G", "1T" (binary units).
