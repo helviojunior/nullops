@@ -31,8 +31,29 @@ Requires the `cryptography` package (`pip install cryptography`).
 
 Requires PowerShell **7.3+** (.NET 7: HKDF, AesGcm, DeriveRawSecretAgreement).
 
+Run it straight as a script:
+
 ```powershell
 ./upload.ps1 -Url https://host:8443 -Token <TOKEN> -File ./report.pdf
+```
+
+Or load the function straight from GitHub (no local copy) and reuse it:
+
+```powershell
+iex (irm https://raw.githubusercontent.com/helviojunior/nullops/main/senders/upload.ps1)
+Send-NullopsFile -Url https://host:8443 -Token <TOKEN> -File ./report.pdf
+```
+
+Or dot-source a local copy and reuse the `Send-NullopsFile` function (each call
+opens its own session and returns the stored file info):
+
+```powershell
+. ./upload.ps1
+Send-NullopsFile -Url https://host:8443 -Token <TOKEN> -File ./a.pdf
+Get-ChildItem *.log | ForEach-Object {
+    Send-NullopsFile https://host:8443 <TOKEN> $_.FullName -Quiet
+}
+Get-Help Send-NullopsFile -Full
 ```
 
 Re-running either script with the same file resumes an interrupted upload.
