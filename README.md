@@ -81,7 +81,7 @@ The screenshots are generated with demo data by `make screenshots` (Docker + Pla
 | `nullops list-users` | Lists users (access, MFA, dates) |
 | `nullops del-user`   | Deletes a user and revokes its sessions |
 | `nullops sessions`   | Lists active sessions; `sessions revoke <id-prefix> \| --user <name> \| --all` |
-| `nullops web`        | Starts the server (`-r` root, `-b` bind, `-p` port, `--readonly`, `--show-hidden`, `--exclude`, `--allow-ext`, `--max-upload`, `--audit-log`, `--trusted-proxy`, `--session-ttl`, `--no-tls`, `-y`, `--no-auth`) |
+| `nullops web`        | Starts the server (`-r` root, `-b` bind, `-p` port, `--readonly`, `--show-hidden`, `--exclude`, `--allow-ext`, `--max-upload`, `--audit-log`, `--trusted-proxy`, `--session-ttl`, `--no-tls`, `--allow-cleartext`, `-y`, `--no-auth`) |
 | `nullops version`    | Version and build information |
 
 Changes to users (`add-user`, `del-user`) and revoked sessions take effect on a running server within seconds.
@@ -108,18 +108,26 @@ Global flags: `--data-dir` (default `~/.nullops`), `-v`/`-vv` verbosity, `-D` (=
 | debug | `-v` | plus TLS/HTTP server errors (e.g. `tls: bad certificate` from a browser that does not trust the self-signed certificate yet) and read calls (`list`, `search`, `info`) |
 | trace | `-vv` / `-D` | plus every HTTP request (method, path, status, bytes, ms) and the source location of each line |
 
-### `--no-tls`: no payload encryption
+### `--no-tls`: obfuscated fallback (no real encryption)
 
-Without TLS the browser only exposes WebCrypto on `localhost`, so `--no-tls`
-also **disables the payload encryption** of `/api`. That encryption is what
-keeps proxies, IDS/IPS and EDR/DLP agents from identifying the traffic: with it
-off, logins, passwords, file names and contents travel in clear text.
+Without TLS the browser only exposes WebCrypto on `localhost`, so a browser on
+a `--no-tls` server **cannot use the AES-256-GCM payload encryption** of `/api`.
+The channel negotiates the best mode each client can do:
 
-The console shows this warning and asks `Do you want to continue? [y/N]`
-(the default is no). Without a terminal the server refuses to start unless
-`-y/--yes` is passed. The UI shows a red banner on the login screen and in the
-footer. A server running with TLS refuses unencrypted clients, so a client
-cannot downgrade the session to clear text.
+- **`encrypted`** — AES-256-GCM, always offered. Non-browser clients (the
+  `senders/`) still use it even over plain http.
+- **`obfuscated`** — a SHA-256 keystream XOR keyed on the session id, used by
+  the browser on a `--no-tls` server. **This is not encryption.** It keeps
+  payloads out of cleartext against passive inspection (a proxy, IDS/IPS or
+  EDR/DLP grepping the traffic) and logs, but gives **no** protection against an
+  active man-in-the-middle, who without TLS can rewrite the delivered code.
+- **`cleartext`** — no payload protection, offered only with
+  `--no-tls --allow-cleartext`.
+
+The console shows a warning and asks `Do you want to continue? [y/N]` (default
+no). Without a terminal the server refuses to start unless `-y/--yes` is passed.
+The UI shows a banner on the login screen and in the footer. A server running
+with TLS refuses the fallback modes, so a client cannot be downgraded.
 
 ### PastePad
 
@@ -275,7 +283,7 @@ runnable `./build/nullops[.exe]` for the host.
 ### Front-end development
 
 ```bash
-nullops web --no-tls -y -p 8181       # API on http://127.0.0.1:8181 (no encryption)
+nullops web --no-tls -y -p 8181       # http://127.0.0.1:8181 (browser → obfuscated channel)
 cd frontend && npm install && npm run dev   # Vite with a proxy to /api
 ```
 

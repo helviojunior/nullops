@@ -24,6 +24,7 @@ export class ApiClient {
     this.crypto = new SessionCrypto();
     this.authRequired = true;
     this.encrypted = true;
+    this.mode = "encrypted"; // encrypted | obfuscated | cleartext
   }
 
   headers() {
@@ -32,13 +33,15 @@ export class ApiClient {
 
   restore(rec) {
     this.crypto.restore(rec);
-    this.encrypted = !rec.plain;
+    this.mode = rec.mode || (rec.plain ? "cleartext" : "encrypted");
+    this.encrypted = this.mode === "encrypted";
     this.authRequired = true;
   }
 
   async connect() {
     const info = await this.crypto.handshake();
     this.authRequired = info.authRequired;
+    this.mode = info.mode || (info.encrypted ? "encrypted" : "cleartext");
     this.encrypted = info.encrypted;
     return info;
   }

@@ -4,6 +4,7 @@ export const LOCALES = {
     "app.name": "NullOps - Web Resource Manager",
     "app.product": "Web Resource Manager",
     "app.secure": "ECDH P-256 + AES-256-GCM · one key per session",
+    "app.obfuscated": "Obfuscated channel (--no-tls) · XOR keystream, not encryption",
     "app.plain": "Payload encryption DISABLED (--no-tls) · traffic in clear text",
 
     "common.cancel": "Cancel",
@@ -58,6 +59,9 @@ export const LOCALES = {
     "account.noAuth": "Authentication is disabled on this server.",
 
     "login.subtitlePlain": "Unencrypted session (server started with --no-tls)",
+    "login.subtitleObfuscated": "Obfuscated session (--no-tls) · payloads are not encrypted",
+    "login.obfuscatedTitle": "Obfuscated, not encrypted",
+    "login.obfuscatedHint": "Without TLS the browser cannot use AES-GCM, so payloads are only obfuscated (a keystream XOR). This keeps them out of cleartext against passive inspection, but it is NOT encryption and gives no protection against an active man-in-the-middle. Use TLS for real security.",
     "login.plainTitle": "Encryption disabled",
     "login.plainHint": "This server runs without TLS and without payload encryption. Your password and every file travel in clear text and can be read by proxies or network monitoring.",
 
@@ -238,6 +242,7 @@ export const LOCALES = {
     "app.name": "NullOps - Web Resource Manager",
     "app.product": "Web Resource Manager",
     "app.secure": "ECDH P-256 + AES-256-GCM · uma chave por sessão",
+    "app.obfuscated": "Canal ofuscado (--no-tls) · keystream XOR, não é criptografia",
     "app.plain": "Criptografia de payload DESATIVADA (--no-tls) · tráfego em texto claro",
 
     "common.cancel": "Cancelar",
@@ -292,6 +297,9 @@ export const LOCALES = {
     "account.noAuth": "A autenticação está desativada neste servidor.",
 
     "login.subtitlePlain": "Sessão sem criptografia (servidor iniciado com --no-tls)",
+    "login.subtitleObfuscated": "Sessão ofuscada (--no-tls) · os payloads não são criptografados",
+    "login.obfuscatedTitle": "Ofuscado, não criptografado",
+    "login.obfuscatedHint": "Sem TLS o navegador não consegue usar AES-GCM, então os payloads são apenas ofuscados (um XOR com keystream). Isso evita texto claro contra inspeção passiva, mas NÃO é criptografia e não protege contra um man-in-the-middle ativo. Use TLS para segurança real.",
     "login.plainTitle": "Criptografia desativada",
     "login.plainHint": "Este servidor está sem TLS e sem criptografia de payload. Sua senha e todos os arquivos trafegam em texto claro e podem ser lidos por proxies ou monitoramento de rede.",
 

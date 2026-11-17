@@ -21,11 +21,14 @@ import (
 // PreAuthTTL is the lifetime of a handshake that was not followed by a login.
 const PreAuthTTL = 10 * time.Minute
 
-// Session is one browser session. Cipher is nil for plaintext sessions
-// (server started with --no-tls: payload encryption disabled).
+// Session is one browser session. The payload codec is one of:
+//   - Cipher != nil      AES-256-GCM (encrypted mode)
+//   - Obf    != nil      keystream XOR (obfuscated mode, --no-tls)
+//   - both nil           cleartext (--no-tls --allow-cleartext)
 type Session struct {
 	ID            string
 	Cipher        *crypto.Cipher
+	Obf           *crypto.Obfuscator
 	Created       time.Time
 	mu            sync.Mutex
 	expires       time.Time
@@ -48,6 +51,20 @@ type LoginState struct {
 	NeedMFA  bool
 	MFAOK    bool
 	Expires  time.Time
+}
+
+// Codec returns the active payload codec, or nil for a cleartext session.
+// A nil *Cipher/*Obfuscator must not be returned as a non-nil interface, so
+// the concrete fields are checked explicitly.
+func (s *Session) Codec() crypto.Codec {
+	switch {
+	case s.Cipher != nil:
+		return s.Cipher
+	case s.Obf != nil:
+		return s.Obf
+	default:
+		return nil
+	}
 }
 
 // Login returns a copy of the login state (nil when none / expired).
@@ -173,13 +190,26 @@ func (m *Manager) Create(clientPub []byte) (*Session, []byte, error) {
 	return m.add(id, c), serverPub, nil
 }
 
-// CreatePlain stores a new session without payload encryption.
+// CreatePlain stores a new cleartext session (no payload codec).
 func (m *Manager) CreatePlain() (*Session, error) {
 	_, id, err := newID()
 	if err != nil {
 		return nil, err
 	}
 	return m.add(id, nil), nil
+}
+
+// CreateObf stores a new obfuscated session. The keystream secret is the
+// session id bytes, so the obfuscator can be rebuilt from the id alone (there
+// is nothing secret to persist); see the package note on the cosmetic ceiling.
+func (m *Manager) CreateObf() (*Session, error) {
+	sidBytes, id, err := newID()
+	if err != nil {
+		return nil, err
+	}
+	s := m.add(id, nil)
+	s.Obf = crypto.NewObfuscator(sidBytes)
+	return s, nil
 }
 
 func (m *Manager) add(id string, c *crypto.Cipher) *Session {
@@ -205,7 +235,10 @@ func (m *Manager) Authenticate(s *Session, user string, readonly bool, ip, ua st
 	s.expires = now.Add(m.ttl)
 	exp := s.expires
 	s.mu.Unlock()
-	if m.store == nil {
+	// Obfuscated sessions are memory-only: their secret is the session id, so
+	// there is no key to wrap, and persisting them as "not encrypted" would let
+	// them reload as cleartext. They re-handshake after a restart.
+	if m.store == nil || s.Obf != nil {
 		return nil
 	}
 	s.mu.Lock()

@@ -44,14 +44,21 @@ const (
 type Config struct {
 	Addr string
 	TLS  *tls.Certificate // nil = plain http
-	// Plaintext disables the payload encryption of /api (no WebCrypto). Only
-	// used with --no-tls, after the operator explicitly confirmed it.
-	Plaintext  bool
-	NoAuth     bool
-	ReadOnly   bool
-	Title      string
-	SessionTTL time.Duration
-	Sessions   session.Store // persistent session store (nil = memory only)
+	// Plaintext marks a --no-tls server (plain http). It gates session
+	// persistence and enables the fallback channel modes below.
+	Plaintext bool
+	// AllowObfuscated offers the obfuscated channel mode (keystream XOR, not
+	// encryption) to clients that cannot use AES-GCM — e.g. a browser over
+	// plain http. Enabled by --no-tls.
+	AllowObfuscated bool
+	// AllowCleartext offers the raw cleartext mode. Enabled by
+	// --no-tls --allow-cleartext (explicitly confirmed by the operator).
+	AllowCleartext bool
+	NoAuth         bool
+	ReadOnly       bool
+	Title          string
+	SessionTTL     time.Duration
+	Sessions       session.Store // persistent session store (nil = memory only)
 	// TrustedProxies whose X-Forwarded-For / X-Real-IP are honoured.
 	TrustedProxies []*net.IPNet
 	// MaxUpload caps the size of one uploaded file in bytes (0 = unlimited).
@@ -198,11 +205,12 @@ func writeErr(w http.ResponseWriter, status int, msg string) {
 }
 
 func writeSealed(w http.ResponseWriter, sess *session.Session, v any) {
-	if sess.Cipher == nil {
+	codec := sess.Codec()
+	if codec == nil {
 		writeJSON(w, 200, v)
 		return
 	}
-	env, err := sess.Cipher.SealJSON(v)
+	env, err := codec.SealJSON(v)
 	if err != nil {
 		writeErr(w, 500, "Internal error")
 		return
@@ -347,7 +355,8 @@ func (s *Server) handleAPI(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) open(sess *session.Session, body []byte) ([]byte, error) {
-	if sess.Cipher == nil {
+	codec := sess.Codec()
+	if codec == nil {
 		if len(body) > 0 && !json.Valid(body) {
 			return nil, errors.New("invalid json")
 		}
@@ -357,7 +366,7 @@ func (s *Server) open(sess *session.Session, body []byte) ([]byte, error) {
 	if err := json.Unmarshal(body, &env); err != nil {
 		return nil, err
 	}
-	return sess.Cipher.Open(env)
+	return codec.Open(env)
 }
 
 func (s *Server) handshake(w http.ResponseWriter, body []byte) {
@@ -366,7 +375,8 @@ func (s *Server) handshake(w http.ResponseWriter, body []byte) {
 		return
 	}
 	var req struct {
-		ClientPub string `json:"client_pub"`
+		ClientPub string   `json:"client_pub"`
+		Accept    []string `json:"accept"` // preferred channel modes, best first
 	}
 	if len(body) > 0 {
 		if err := json.Unmarshal(body, &req); err != nil {
@@ -375,36 +385,76 @@ func (s *Server) handshake(w http.ResponseWriter, body []byte) {
 		}
 	}
 
+	// The server always offers encrypted; obfuscated/cleartext only with
+	// --no-tls. These capabilities are advertised so the client can choose.
+	caps := map[string]bool{
+		"encrypted":  true,
+		"obfuscated": s.cfg.AllowObfuscated,
+		"cleartext":  s.cfg.AllowCleartext,
+	}
+
+	// Back-compat: a client that sends no "accept" is a pre-negotiation one.
+	// It expects encrypted when it sent a public key, else the old plaintext
+	// behaviour of a --no-tls server.
+	accept := req.Accept
+	if len(accept) == 0 {
+		if req.ClientPub != "" {
+			accept = []string{"encrypted"}
+		} else {
+			accept = []string{"cleartext", "obfuscated"}
+		}
+	}
+
+	mode := ""
+	for _, m := range accept {
+		if caps[m] {
+			mode = m
+			break
+		}
+	}
+	if mode == "" {
+		// No overlap. A browser asking only for encrypted over a secure-context
+		// mismatch gets the dedicated code it already knows how to surface.
+		code := "no_common_mode"
+		if len(accept) == 1 && accept[0] == "encrypted" {
+			code = "secure_context"
+		}
+		writeJSON(w, 400, map[string]any{"ok": false, "error": "No common channel mode",
+			"code": code, "modes": caps})
+		return
+	}
+
 	var sess *session.Session
-	resp := map[string]any{"auth_required": !s.cfg.NoAuth}
-	if s.cfg.Plaintext {
-		var err error
-		if sess, err = s.sessions.CreatePlain(); err != nil {
-			writeErr(w, 500, "Handshake failed")
-			return
-		}
-		resp["encrypted"] = false
-	} else {
+	var err error
+	resp := map[string]any{"auth_required": !s.cfg.NoAuth, "mode": mode, "modes": caps}
+	switch mode {
+	case "encrypted":
 		if req.ClientPub == "" {
-			// The browser has no WebCrypto (not a secure context).
 			writeJSON(w, 400, map[string]any{"ok": false, "error": "Secure context required",
-				"code": "secure_context", "encrypted": true})
+				"code": "secure_context", "modes": caps})
 			return
 		}
-		pub, err := crypto.B64.DecodeString(req.ClientPub)
-		if err != nil {
+		pub, derr := crypto.B64.DecodeString(req.ClientPub)
+		if derr != nil {
 			writeErr(w, 400, "Malformed handshake")
 			return
 		}
 		var serverPub []byte
 		sess, serverPub, err = s.sessions.Create(pub)
-		if err != nil {
-			writeErr(w, 400, "Handshake failed")
-			return
+		if err == nil {
+			resp["server_pub"] = crypto.B64.EncodeToString(serverPub)
 		}
-		resp["encrypted"] = true
-		resp["server_pub"] = crypto.B64.EncodeToString(serverPub)
+	case "obfuscated":
+		sess, err = s.sessions.CreateObf()
+	default: // cleartext
+		sess, err = s.sessions.CreatePlain()
 	}
+	if err != nil {
+		writeErr(w, 500, "Handshake failed")
+		return
+	}
+	// Legacy field for pre-negotiation clients: true only when fully encrypted.
+	resp["encrypted"] = mode == "encrypted"
 	if s.cfg.NoAuth {
 		sess.SetAuth("anonymous", s.cfg.ReadOnly)
 	}
@@ -440,7 +490,8 @@ func (s *Server) download(w http.ResponseWriter, r *http.Request, sess *session.
 	h.Set("Content-Type", "application/octet-stream")
 	h.Set("Cache-Control", "no-store")
 	h.Set("X-File-Size", strconv.FormatInt(size, 10))
-	if sess.Cipher == nil {
+	codec := sess.Codec()
+	if codec == nil {
 		h.Set("Content-Length", strconv.FormatInt(size, 10))
 		w.WriteHeader(200)
 		if n, err := io.CopyN(w, fh, size); err != nil && r.Context().Err() != nil {
@@ -449,14 +500,14 @@ func (s *Server) download(w http.ResponseWriter, r *http.Request, sess *session.
 		}
 		return
 	}
-	h.Set("Content-Length", strconv.FormatInt(size+frames*32, 10))
+	h.Set("Content-Length", strconv.FormatInt(size+frames*int64(codec.FrameOverhead()), 10))
 	w.WriteHeader(200)
 	buf := make([]byte, downloadChunk)
 	var sent int64
 	for sent < size {
 		n, err := io.ReadFull(fh, buf)
 		if n > 0 {
-			if _, werr := w.Write(sess.Cipher.Frame(buf[:n])); werr != nil {
+			if _, werr := w.Write(codec.Frame(buf[:n])); werr != nil {
 				// the browser canceled the transfer (or the connection dropped)
 				auditInfo("download canceled", "user", c.Username, "ip", s.clientIP(r), "path", "/"+req.Path,
 					"sent", sent, "size", size)
@@ -532,11 +583,11 @@ func (s *Server) upload(w http.ResponseWriter, r *http.Request, sess *session.Se
 	writeSealed(w, sess, map[string]any{"ok": true, "result": map[string]any{"received": received}})
 }
 
-// frameWriter buffers a stream and emits it as encrypted frames (or raw bytes
-// for plaintext sessions).
+// frameWriter buffers a stream and emits it as sealed frames (or raw bytes
+// for cleartext sessions, when c is nil).
 type frameWriter struct {
 	w   http.ResponseWriter
-	c   *crypto.Cipher
+	c   crypto.Codec
 	buf []byte
 	err error
 }
@@ -589,7 +640,7 @@ func (s *Server) downloadZip(w http.ResponseWriter, r *http.Request, sess *sessi
 	h.Set("Cache-Control", "no-store")
 	h.Set("X-Archive", "zip")
 	w.WriteHeader(200)
-	fw := &frameWriter{w: w, c: sess.Cipher, buf: make([]byte, 0, downloadChunk)}
+	fw := &frameWriter{w: w, c: sess.Codec(), buf: make([]byte, 0, downloadChunk)}
 	if err := s.cfg.FS.ZipTo(fw, paths); err != nil {
 		if fw.err != nil {
 			auditInfo("download canceled", "user", c.Username, "ip", s.clientIP(r), "paths", "/"+strings.Join(paths, ", /"))

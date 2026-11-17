@@ -13,7 +13,7 @@ import Logo from "components/brand/Logo";
 // Authentication screen: the documented exception to the 100%-width rule
 // (centered 420px card, standard login layout).
 export default function Login({ darkMode, setDarkMode }) {
-  const { status, user, expired, encrypted, loginStart, loginMFA, loginPassword, connect } = useAuth();
+  const { status, user, expired, encrypted, mode, loginStart, loginMFA, loginPassword, connect } = useAuth();
   const { t, tf } = useI18n();
   // user -> [mfa] -> password
   const [step, setStep] = useState("user");
@@ -80,7 +80,11 @@ export default function Login({ darkMode, setDarkMode }) {
             <Logo className="mb-3 h-14" alt={t("app.name")} />
             <h1 className="text-lg font-semibold">{t("app.product")}</h1>
             <p className="text-sm text-muted-foreground">
-              {encrypted ? t("login.subtitle") : t("login.subtitlePlain")}
+              {encrypted
+                ? t("login.subtitle")
+                : mode === "obfuscated"
+                  ? t("login.subtitleObfuscated")
+                  : t("login.subtitlePlain")}
             </p>
           </CardHeader>
           <CardContent>
@@ -108,7 +112,15 @@ export default function Login({ darkMode, setDarkMode }) {
                 <Loader2 className="h-4 w-4 animate-spin" /> {t("login.connecting")}
               </div>
             )}
-            {!encrypted && status === "ready" && (
+            {!encrypted && status === "ready" && mode === "obfuscated" && (
+              <div className="mb-4 rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-sm">
+                <div className="mb-1 flex items-center gap-2 font-medium text-amber-600 dark:text-amber-500">
+                  <ShieldAlert className="h-4 w-4" /> {t("login.obfuscatedTitle")}
+                </div>
+                <p className="text-muted-foreground">{t("login.obfuscatedHint")}</p>
+              </div>
+            )}
+            {!encrypted && status === "ready" && mode !== "obfuscated" && (
               <div className="mb-4 rounded-lg border border-red-500/40 bg-red-500/10 p-4 text-sm">
                 <div className="mb-1 flex items-center gap-2 font-medium text-red-500">
                   <ShieldAlert className="h-4 w-4" /> {t("login.plainTitle")}

@@ -30,21 +30,22 @@ import (
 )
 
 var webOpts = struct {
-	Root       string
-	Bind       string
-	Port       int
-	NoTLS      bool
-	AssumeYes  bool
-	NoAuth     bool
-	ReadOnly   bool
-	ShowHidden bool
-	Exclude    []string
-	AllowExt   []string
-	Title      string
-	SessionTTL int
-	AuditLog   string
-	Trusted    []string
-	MaxUpload  string
+	Root           string
+	Bind           string
+	Port           int
+	NoTLS          bool
+	AllowCleartext bool
+	AssumeYes      bool
+	NoAuth         bool
+	ReadOnly       bool
+	ShowHidden     bool
+	Exclude        []string
+	AllowExt       []string
+	Title          string
+	SessionTTL     int
+	AuditLog       string
+	Trusted        []string
+	MaxUpload      string
 }{}
 
 var webCmd = &cobra.Command{
@@ -165,22 +166,24 @@ func runWeb(cmd *cobra.Command, args []string) error {
 
 	addr := net.JoinHostPort(webOpts.Bind, strconv.Itoa(webOpts.Port))
 	srv, err := server.New(server.Config{
-		Addr:           addr,
-		TLS:            cert,
-		Plaintext:      webOpts.NoTLS,
-		NoAuth:         webOpts.NoAuth,
-		ReadOnly:       webOpts.ReadOnly,
-		Title:          webOpts.Title,
-		SessionTTL:     time.Duration(webOpts.SessionTTL) * time.Second,
-		Sessions:       sessStore,
-		TrustedProxies: trusted,
-		MaxUpload:      maxUpload,
-		Pads:           padMgr,
-		UploadReqs:     uploadReqs,
-		PathRefs:       pathRefs,
-		AllowedExt:     webOpts.AllowExt,
-		Users:          store,
-		FS:             fsys,
+		Addr:            addr,
+		TLS:             cert,
+		Plaintext:       webOpts.NoTLS,
+		AllowObfuscated: webOpts.NoTLS,
+		AllowCleartext:  webOpts.NoTLS && webOpts.AllowCleartext,
+		NoAuth:          webOpts.NoAuth,
+		ReadOnly:        webOpts.ReadOnly,
+		Title:           webOpts.Title,
+		SessionTTL:      time.Duration(webOpts.SessionTTL) * time.Second,
+		Sessions:        sessStore,
+		TrustedProxies:  trusted,
+		MaxUpload:       maxUpload,
+		Pads:            padMgr,
+		UploadReqs:      uploadReqs,
+		PathRefs:        pathRefs,
+		AllowedExt:      webOpts.AllowExt,
+		Users:           store,
+		FS:              fsys,
 	})
 	if err != nil {
 		return err
@@ -207,20 +210,28 @@ func runWeb(cmd *cobra.Command, args []string) error {
 
 var errAborted = errors.New("aborted by user")
 
-// confirmPlaintext warns that --no-tls also disables the payload encryption
-// and asks the operator to confirm ([y/N], default no).
+// confirmPlaintext warns that --no-tls drops the browser from AES-GCM down to
+// the obfuscated channel (or to cleartext with --allow-cleartext) and asks the
+// operator to confirm ([y/N], default no).
 func confirmPlaintext() error {
 	w := os.Stderr
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "  \033[31m!! WARNING: --no-tls\033[0m")
 	fmt.Fprintln(w, "  Without TLS the browser does not expose WebCrypto outside localhost, so the")
-	fmt.Fprintln(w, "  \033[1mpayload encryption of the /api channel (ECDH + AES-256-GCM) is DISABLED too.\033[0m")
-	fmt.Fprintln(w, "  That encryption is what keeps a proxy, IDS/IPS or endpoint agent (EDR/DLP)")
-	fmt.Fprintln(w, "  from identifying the traffic: logins, passwords, file names and file contents")
-	fmt.Fprintln(w, "  will travel in CLEAR TEXT and can be read or altered by anyone on the path.")
+	fmt.Fprintln(w, "  \033[1mpayload encryption of the /api channel (ECDH + AES-256-GCM) is NOT available.\033[0m")
+	if webOpts.AllowCleartext {
+		fmt.Fprintln(w, "  With --allow-cleartext the channel falls back to CLEAR TEXT: logins, passwords,")
+		fmt.Fprintln(w, "  file names and file contents travel in the clear and can be read or altered by")
+		fmt.Fprintln(w, "  anyone on the path (a proxy, IDS/IPS or endpoint agent sees everything).")
+	} else {
+		fmt.Fprintln(w, "  The channel falls back to OBFUSCATION (keystream XOR) — this is NOT encryption:")
+		fmt.Fprintln(w, "  it only keeps payloads out of cleartext against passive inspection and log")
+		fmt.Fprintln(w, "  capture. It does NOT protect against an active man-in-the-middle, who without")
+		fmt.Fprintln(w, "  TLS can rewrite the delivered code. Non-browser clients still use AES-GCM.")
+	}
 	fmt.Fprintln(w)
 	if webOpts.AssumeYes {
-		log.Warn("payload encryption disabled (--no-tls --yes)")
+		log.Warn("tls disabled (--no-tls --yes)", "cleartext", webOpts.AllowCleartext)
 		return nil
 	}
 	if !term.IsTerminal(int(os.Stdin.Fd())) {
@@ -231,7 +242,7 @@ func confirmPlaintext() error {
 	switch strings.ToLower(strings.TrimSpace(line)) {
 	case "y", "yes", "s", "sim":
 		fmt.Fprintln(w)
-		log.Warn("payload encryption disabled by the operator")
+		log.Warn("tls disabled by the operator", "cleartext", webOpts.AllowCleartext)
 		return nil
 	}
 	return errAborted
@@ -284,9 +295,12 @@ func printBanner(root string, https bool, genUser, genPass string, users []strin
 	}
 	if https {
 		fmt.Printf("  \033[90mhttps: a self-signed certificate triggers a one-time browser warning\033[0m\n")
+	} else if webOpts.AllowCleartext {
+		fmt.Printf("  \033[31mWARNING: TLS disabled (--no-tls --allow-cleartext): the browser channel is\033[0m\n")
+		fmt.Printf("  \033[31m         CLEAR TEXT. Credentials, file names and contents are readable.\033[0m\n")
 	} else {
-		fmt.Printf("  \033[31mWARNING: TLS and payload encryption are DISABLED (--no-tls).\033[0m\n")
-		fmt.Printf("  \033[31m         Credentials, file names and contents travel in clear text.\033[0m\n")
+		fmt.Printf("  \033[33mtransport: TLS disabled (--no-tls); browser falls back to obfuscation\033[0m\n")
+		fmt.Printf("  \033[90m           (keystream XOR, not encryption; no protection against active MITM)\033[0m\n")
 	}
 	fmt.Printf("  \033[90mpress Ctrl+C to stop\033[0m\n\n")
 }
@@ -297,7 +311,8 @@ func init() {
 	f.StringVarP(&webOpts.Root, "root", "r", ".", "Directory to serve")
 	f.StringVarP(&webOpts.Bind, "bind", "b", "127.0.0.1", "Bind address (0.0.0.0 for all interfaces)")
 	f.IntVarP(&webOpts.Port, "port", "p", 8181, "TCP port")
-	f.BoolVar(&webOpts.NoTLS, "no-tls", false, "Serve plain http:// and DISABLE the payload encryption (asks for confirmation)")
+	f.BoolVar(&webOpts.NoTLS, "no-tls", false, "Serve plain http://; the browser channel falls back to obfuscation (asks for confirmation)")
+	f.BoolVar(&webOpts.AllowCleartext, "allow-cleartext", false, "With --no-tls, also offer the raw cleartext channel (no obfuscation)")
 	f.BoolVarP(&webOpts.AssumeYes, "yes", "y", false, "Do not ask for confirmation (with --no-tls)")
 	f.BoolVar(&webOpts.NoAuth, "no-auth", false, "Disable authentication (dangerous)")
 	f.BoolVar(&webOpts.ReadOnly, "readonly", false, "Serve read-only for every user")

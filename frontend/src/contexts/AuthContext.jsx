@@ -24,6 +24,7 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null); // {username, readonly, title, version, auth}
   const [expired, setExpired] = useState(false);
   const [encrypted, setEncrypted] = useState(true);
+  const [mode, setMode] = useState("encrypted");
 
   const loadInfo = useCallback(async (client) => {
     const info = await client.call("info", {});
@@ -46,6 +47,7 @@ export function AuthProvider({ children }) {
     }
     clientRef.current = client;
     setEncrypted(client.encrypted);
+    setMode(client.mode);
     setStatus("ready");
     return true;
   }, [loadInfo]);
@@ -59,6 +61,7 @@ export function AuthProvider({ children }) {
         await client.connect();
         clientRef.current = client;
         setEncrypted(client.encrypted);
+        setMode(client.mode);
         if (!client.authRequired) await loadInfo(client);
         setStatus("ready");
         return client;
@@ -149,6 +152,7 @@ export function AuthProvider({ children }) {
     user,
     expired,
     encrypted,
+    mode,
     authRequired: clientRef.current ? clientRef.current.authRequired : true,
     client: () => clientRef.current,
     connect,

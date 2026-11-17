@@ -134,3 +134,6 @@ func (c *Cipher) Frame(plaintext []byte) []byte {
 func (c *Cipher) OpenFrame(iv, ct []byte) ([]byte, error) {
 	return c.aead.Open(nil, iv, ct, nil)
 }
+
+// FrameOverhead is 4 (length prefix) + 12 (iv) + the GCM tag (16).
+func (c *Cipher) FrameOverhead() int { return 4 + ivLen + c.aead.Overhead() }

@@ -5,6 +5,7 @@ import {
   Moon,
   Sun,
   Languages,
+  ShieldAlert,
   ShieldCheck,
   ShieldOff,
   Loader2,
@@ -87,7 +88,7 @@ function currentFolder(pathname) {
 }
 
 export default function AppLayout({ darkMode, setDarkMode }) {
-  const { user, status, logout, encrypted } = useAuth();
+  const { user, status, logout, encrypted, mode } = useAuth();
   const { t, tf } = useI18n();
   const location = useLocation();
   useRefVersion();
@@ -207,6 +208,11 @@ export default function AppLayout({ darkMode, setDarkMode }) {
           <>
             <ShieldCheck className="h-3.5 w-3.5 text-emerald-500" />
             <span className="truncate">{t("app.secure")}</span>
+          </>
+        ) : mode === "obfuscated" ? (
+          <>
+            <ShieldAlert className="h-3.5 w-3.5 text-amber-500" />
+            <span className="truncate text-amber-500">{t("app.obfuscated")}</span>
           </>
         ) : (
           <>
