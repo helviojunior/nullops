@@ -30,6 +30,13 @@ Requires the `cryptography` package (`pip install cryptography`).
 ## PowerShell — `upload.ps1`
 
 Requires PowerShell **7.3+** (.NET 7: HKDF, AesGcm, DeriveRawSecretAgreement).
+Windows PowerShell 5.1 runs on .NET Framework, which has none of those, so it
+is not supported — install PowerShell 7 and run with `pwsh` (not `powershell`):
+
+```powershell
+winget install --id Microsoft.PowerShell       # or: https://aka.ms/powershell-release
+pwsh -NoProfile -File ./upload.ps1 -Url https://host:8443 -Token <TOKEN> -File ./report.pdf
+```
 
 Run it straight as a script:
 
