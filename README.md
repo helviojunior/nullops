@@ -15,8 +15,6 @@ nullops web -r /data -b 0.0.0.0 -p 8443
 - **HTTPS by default**, with a self-signed certificate generated on the first run.
 - **Pure Go server** (`net/http`).
 
-> The original Python implementation lives in the `python` branch.
-
 ![File browser with the folder tree](docs/images/files.png)
 
 ## Screenshots
