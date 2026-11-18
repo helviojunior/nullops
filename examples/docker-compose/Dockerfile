@@ -18,9 +18,18 @@ RUN apt-get update \
         ca-certificates curl jq wget tar \
     && rm -rf /var/lib/apt/lists/*
 
+# Cache-bust for the download layer ONLY. The step below fetches the *latest*
+# release at build time, so a plain rebuild would reuse the cached layer and
+# keep an outdated binary. Giving NULLOPS_CACHEBUST a new value invalidates the
+# build cache from here on (the apt layer above stays cached), forcing a fresh
+# download. The compose file wires this automatically; on a bare `docker build`
+# pass e.g.  --build-arg NULLOPS_CACHEBUST=$(date +%s)
+ARG NULLOPS_CACHEBUST=
+
 # Resolve the download URL of the latest release that ships a linux-<arch>
 # archive, then download and install the binary (same query as INSTALL.md).
 RUN set -eux; \
+    : "cache-bust: ${NULLOPS_CACHEBUST}"; \
     url=$(curl -s https://api.github.com/repos/helviojunior/nullops/releases \
         | jq -r --arg filename "linux-${TARGETARCH}.tar.gz\$" \
         '[ .[] | {id: .id, assets: [ .assets[] | select(.name|match($filename)) | {browser_download_url} ]} | select(.assets != []) ] | sort_by(.id) | reverse | first(.[].assets[]) | .browser_download_url'); \

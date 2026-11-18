@@ -4,6 +4,11 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        # Set NULLOPS_CACHEBUST to a changing value to force a fresh download of
+        # the latest release on rebuild (the download layer is otherwise cached).
+        # e.g.:  NULLOPS_CACHEBUST=$(date +%s) docker compose up --build
+        NULLOPS_CACHEBUST: ${NULLOPS_CACHEBUST:-}
     restart: unless-stopped
     environment:
       - NULLOPS_NO_TLS=${NULLOPS_NO_TLS:-false}

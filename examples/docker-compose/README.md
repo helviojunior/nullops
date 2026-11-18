@@ -78,7 +78,10 @@ docker compose up -d
 # Serve a host folder instead of a named volume
 echo 'NULLOPS_DATA_MOUNT=./data' >> .env && docker compose up -d
 
-# Update to the newest release (the download layer is cached, so force a rebuild)
+# Update to the newest release. The download layer is cached by design; bump
+# NULLOPS_CACHEBUST to re-fetch the latest release (keeps the apt layer cached).
+NULLOPS_CACHEBUST=$(date +%s) docker compose up -d --build
+# ...or force everything to rebuild from scratch:
 docker compose build --no-cache && docker compose up -d
 ```
 
