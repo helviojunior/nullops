@@ -32,6 +32,7 @@ import (
 	"github.com/helviojunior/nullops/pkg/pads"
 	"github.com/helviojunior/nullops/pkg/pathref"
 	"github.com/helviojunior/nullops/pkg/session"
+	"github.com/helviojunior/nullops/pkg/sharelink"
 	"github.com/helviojunior/nullops/pkg/uploadreq"
 )
 
@@ -70,6 +71,9 @@ type Config struct {
 	Pads *pads.Manager
 	// UploadReqs stores the public upload links (nil = disabled).
 	UploadReqs *uploadreq.Store
+	// ShareLinks stores the public file-share links served at /share/<uuid>
+	// (nil = disabled).
+	ShareLinks *sharelink.Store
 	// PathRefs maps paths to the opaque refs of the browser URLs (nil = the
 	// front-end falls back to paths in the URL).
 	PathRefs *pathref.Store
@@ -111,6 +115,7 @@ func newServer(cfg Config) *Server {
 	s.base, s.cancelBase = context.WithCancel(context.Background())
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/", s.handleAPI)
+	mux.HandleFunc("/share/", s.handleShare)
 	mux.Handle("/", s.logAccess(assets.Handler()))
 	s.http = &http.Server{
 		Addr:              cfg.Addr,
@@ -305,6 +310,15 @@ func (s *Server) handleAPI(w http.ResponseWriter, r *http.Request) {
 	}
 	if strings.HasPrefix(action, "uploadreq_") {
 		res, err := s.uploadReqAction(r, user, ro, action, plain)
+		if err != nil {
+			writeSealed(w, sess, map[string]any{"ok": false, "error": err.Error()})
+			return
+		}
+		writeSealed(w, sess, map[string]any{"ok": true, "result": res})
+		return
+	}
+	if strings.HasPrefix(action, "share_") {
+		res, err := s.shareAction(r, user, ro, action, plain)
 		if err != nil {
 			writeSealed(w, sess, map[string]any{"ok": false, "error": err.Error()})
 			return

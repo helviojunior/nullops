@@ -21,6 +21,7 @@ import {
   Pencil,
   RefreshCw,
   Search,
+  Share2,
   SquarePen,
   Trash2,
   Upload,
@@ -39,6 +40,7 @@ import { ActionMenu } from "components/ui/menu";
 import FileIcon from "components/files/FileIcon";
 import FolderPicker from "components/files/FolderPicker";
 import RequestUploadDialog from "components/files/RequestUploadDialog";
+import ShareDialog from "components/files/ShareDialog";
 import { canDrop, getDragPaths, isInternalDrag, setDragPaths, useTransfer } from "lib/useTransfer";
 import { errorText } from "lib/errors";
 import {
@@ -135,6 +137,7 @@ export default function Browser() {
   const transfer = useTransfer();
   const [picker, setPicker] = useState(null); // {paths, action}
   const [requestOpen, setRequestOpen] = useState(false);
+  const [shareEntry, setShareEntry] = useState(null);
   const [dropTarget, setDropTarget] = useState(null);
   const [view, setView] = useState(() => {
     try {
@@ -687,6 +690,7 @@ export default function Browser() {
                       <ActionMenu
                         title={t("browser.actions")}
                         items={[
+                          { label: t("share.action"), icon: Share2, onClick: () => setShareEntry(e), hidden: readonly || e.is_dir },
                           { label: t("action.extract"), icon: PackageOpen, onClick: () => extract(e), hidden: readonly || e.is_dir || !isArchive(e.name) },
                           { label: t("action.rename"), icon: Pencil, onClick: () => rename(e), hidden: readonly },
                           { label: t("action.copy"), icon: Copy, onClick: () => copyMove([e.path], "copy"), hidden: readonly },
@@ -728,6 +732,8 @@ export default function Browser() {
       )}
 
       <RequestUploadDialog open={requestOpen} path={path} onClose={() => setRequestOpen(false)} />
+
+      <ShareDialog open={!!shareEntry} entry={shareEntry} onClose={() => setShareEntry(null)} />
 
       <FolderPicker
         open={!!picker}

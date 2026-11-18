@@ -23,6 +23,7 @@ import (
 	"github.com/helviojunior/nullops/pkg/pathref"
 	"github.com/helviojunior/nullops/pkg/server"
 	"github.com/helviojunior/nullops/pkg/session"
+	"github.com/helviojunior/nullops/pkg/sharelink"
 	"github.com/helviojunior/nullops/pkg/tlsutil"
 	"github.com/helviojunior/nullops/pkg/uploadreq"
 	"github.com/spf13/cobra"
@@ -170,6 +171,11 @@ func runWeb(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("path refs: %w", err)
 	}
 	pathRefs.Purge(time.Now().Add(-pathref.Retention))
+	shareLinks, err := sharelink.Open(db.DB())
+	if err != nil {
+		return fmt.Errorf("share links: %w", err)
+	}
+	shareLinks.Purge(time.Now())
 
 	addr := net.JoinHostPort(webOpts.Bind, strconv.Itoa(webOpts.Port))
 	srv, err := server.New(server.Config{
@@ -187,6 +193,7 @@ func runWeb(cmd *cobra.Command, args []string) error {
 		MaxUpload:       maxUpload,
 		Pads:            padMgr,
 		UploadReqs:      uploadReqs,
+		ShareLinks:      shareLinks,
 		PathRefs:        pathRefs,
 		AllowedExt:      webOpts.AllowExt,
 		Users:           store,
