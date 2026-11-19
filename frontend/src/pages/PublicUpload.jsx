@@ -4,7 +4,7 @@ import { AlertTriangle, CheckCircle2, Loader2, ShieldAlert, UploadCloud, X } fro
 import { ApiClient, isAbort } from "lib/api";
 import { InsecureContextError } from "lib/crypto";
 import { errorText } from "lib/errors";
-import { displayName, humanSize } from "lib/utils";
+import { displayName, filesFromClipboard, humanSize } from "lib/utils";
 import { useI18n } from "i18n";
 import { Card, CardContent, CardHeader } from "components/ui/card";
 import Logo from "components/brand/Logo";
@@ -83,6 +83,24 @@ export default function PublicUpload() {
     },
     [token, lang]
   );
+
+  // Ctrl/Cmd+V pastes clipboard files (raw images become clipboard_<timestamp>);
+  // a paste aimed at a text field is left to that field.
+  const sendRef = useRef(send);
+  sendRef.current = send;
+  useEffect(() => {
+    if (state !== "ready") return undefined;
+    const onPaste = (e) => {
+      const el = e.target;
+      if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable)) return;
+      const files = filesFromClipboard(e.clipboardData);
+      if (!files.length) return;
+      e.preventDefault();
+      sendRef.current(files);
+    };
+    window.addEventListener("paste", onPaste);
+    return () => window.removeEventListener("paste", onPaste);
+  }, [state]);
 
   const running = items.some((x) => x.state === "running" || x.state === "waiting");
   useEffect(() => {

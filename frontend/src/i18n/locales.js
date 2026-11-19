@@ -109,6 +109,7 @@ export const LOCALES = {
     "browser.selected": "{n} selected",
     "browser.selectAll": "Select all",
     "browser.dropHere": "Drop files to upload to this folder",
+    "browser.uploadHint": "Upload files (or paste with Ctrl/⌘+V)",
     "browser.up": "Parent folder",
 
     "action.open": "Open",
@@ -363,6 +364,7 @@ export const LOCALES = {
     "browser.selected": "{n} selecionado(s)",
     "browser.selectAll": "Selecionar todos",
     "browser.dropHere": "Solte os arquivos para enviá-los a esta pasta",
+    "browser.uploadHint": "Enviar arquivos (ou cole com Ctrl/⌘+V)",
     "browser.up": "Pasta acima",
 
     "action.open": "Abrir",

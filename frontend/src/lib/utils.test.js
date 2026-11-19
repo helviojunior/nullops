@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   baseName,
+  clipboardName,
+  filesFromClipboard,
   humanSize,
   isEditable,
   joinPath,
@@ -62,6 +64,42 @@ describe("formatting and types", () => {
     expect(typeGroup({ name: "a.tar.gz" })).toBe("archive");
     expect(typeGroup({ name: "run.ps1" })).toBe("code");
     expect(typeGroup({ name: "weird.xyz" })).toBe("other");
+  });
+});
+
+describe("clipboard", () => {
+  // Minimal stand-ins for DataTransfer / DataTransferItem.
+  const item = (file) => ({ kind: file ? "file" : "string", getAsFile: () => file });
+  const cd = (files, list) => ({ items: files.map(item), files: list });
+
+  it("names clipboard images clipboard_<timestamp>.<ext> by MIME", () => {
+    expect(clipboardName("image/png")).toMatch(/^clipboard_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.png$/);
+    expect(clipboardName("image/jpeg")).toMatch(/\.jpg$/);
+    expect(clipboardName("image/svg+xml")).toMatch(/\.svg$/);
+    expect(clipboardName("")).toMatch(/\.png$/);
+  });
+
+  it("renames raw pasted images but keeps real file names", () => {
+    const shot = new File([new Uint8Array([1, 2])], "image.png", { type: "image/png" });
+    const real = new File([new Uint8Array([3])], "report.pdf", { type: "application/pdf" });
+    const photo = new File([new Uint8Array([4])], "vacation.jpg", { type: "image/jpeg" });
+    const out = filesFromClipboard(cd([shot, real, photo]));
+    expect(out).toHaveLength(3);
+    expect(out[0].name).toMatch(/^clipboard_.*\.png$/);
+    expect(out[0].type).toBe("image/png");
+    expect(out[1].name).toBe("report.pdf"); // untouched
+    expect(out[2].name).toBe("vacation.jpg"); // named image file kept
+  });
+
+  it("ignores non-file items and falls back to FileList", () => {
+    expect(filesFromClipboard(cd([null]))).toEqual([]);
+    const f = new File([new Uint8Array([1])], "a.txt", { type: "text/plain" });
+    const out = filesFromClipboard({ items: [], files: [f] });
+    expect(out.map((x) => x.name)).toEqual(["a.txt"]);
+  });
+
+  it("handles missing clipboardData", () => {
+    expect(filesFromClipboard(null)).toEqual([]);
   });
 });
 

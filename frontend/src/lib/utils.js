@@ -85,6 +85,56 @@ export function saveBlob(blob, name) {
   setTimeout(() => URL.revokeObjectURL(url), 30000);
 }
 
+// ---- clipboard (Ctrl/Cmd+V upload) ----------------------------------------
+// Extension to use when saving a clipboard image, by MIME type. Raw clipboard
+// images (screenshots, "copy image") arrive as PNG and keep their alpha channel
+// because the bytes are uploaded untouched — no canvas re-encode that would
+// flatten transparency.
+const IMAGE_EXT = {
+  "image/png": "png",
+  "image/jpeg": "jpg",
+  "image/gif": "gif",
+  "image/webp": "webp",
+  "image/bmp": "bmp",
+  "image/svg+xml": "svg",
+  "image/avif": "avif",
+};
+const imageExt = (type) => IMAGE_EXT[type] || (type || "").split("/")[1] || "png";
+
+// clipboard_YYYY-MM-DD_HH-mm-SS.<ext>
+export function clipboardName(type) {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, "0");
+  const stamp = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}_${p(d.getHours())}-${p(d.getMinutes())}-${p(d.getSeconds())}`;
+  return `clipboard_${stamp}.${imageExt(type)}`;
+}
+
+// A raw pasted image (screenshot / "copy image") has no real name — browsers
+// hand it over empty or as "image.png"/"screenshot.png". A file copied from the
+// OS file manager keeps its own name, which is preserved.
+const isGeneratedImageName = (name) => !name || /^(image|screenshot)\b.*\.\w+$/i.test(name);
+
+// Pull uploadable files out of a paste event's clipboardData: real files keep
+// their name; raw images get a clipboard_<timestamp> name so each paste lands
+// as its own distinct file.
+export function filesFromClipboard(cd) {
+  if (!cd) return [];
+  const out = [];
+  for (const item of cd.items || []) {
+    if (item.kind !== "file") continue;
+    const file = item.getAsFile();
+    if (!file) continue;
+    if (file.type.startsWith("image/") && isGeneratedImageName(file.name)) {
+      out.push(new File([file], clipboardName(file.type), { type: file.type, lastModified: file.lastModified }));
+    } else {
+      out.push(file);
+    }
+  }
+  // Fallback for paths that expose only a FileList.
+  if (!out.length && cd.files?.length) return Array.from(cd.files);
+  return out;
+}
+
 const IMAGE_RE = /\.(png|jpe?g|gif|webp|svg|bmp|ico|avif)$/i;
 export const isImage = (name) => IMAGE_RE.test(name);
 export const isPdf = (name) => /\.pdf$/i.test(name);

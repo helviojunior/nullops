@@ -47,6 +47,7 @@ import {
   baseName,
   displayName,
   cn,
+  filesFromClipboard,
   humanSize,
   isArchive,
   isEditable,
@@ -485,6 +486,29 @@ export default function Browser() {
         },
       };
 
+  // ---- paste to upload -------------------------------------------------------
+  // Ctrl/Cmd+V anywhere on the page uploads clipboard files to the current
+  // folder; raw pasted images become clipboard_<timestamp>.<ext>. A paste aimed
+  // at a text field (the search box, a dialog input) is left to that field.
+  const uploadRef = useRef(uploadFiles);
+  uploadRef.current = uploadFiles;
+  useEffect(() => {
+    if (readonly) return undefined;
+    const onPaste = (e) => {
+      const el = e.target;
+      const editable =
+        el &&
+        (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
+      if (editable) return;
+      const files = filesFromClipboard(e.clipboardData);
+      if (!files.length) return;
+      e.preventDefault();
+      uploadRef.current(files);
+    };
+    window.addEventListener("paste", onPaste);
+    return () => window.removeEventListener("paste", onPaste);
+  }, [readonly]);
+
   const toggleAll = (v) => setSelected(v ? Object.fromEntries(entries.map((x) => [x.path, true])) : {});
 
   // ---- render ----------------------------------------------------------------
@@ -531,7 +555,7 @@ export default function Browser() {
             <Button variant="outline" size="sm" onClick={() => setRequestOpen(true)} title={t("reqUpload.button")}>
               <Link2 className="h-4 w-4" /> {t("reqUpload.button")}
             </Button>
-            <Button size="sm" onClick={() => fileInput.current?.click()}>
+            <Button size="sm" onClick={() => fileInput.current?.click()} title={t("browser.uploadHint")}>
               <Upload className="h-4 w-4" /> {t("browser.upload")}
             </Button>
             <input
