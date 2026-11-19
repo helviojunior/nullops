@@ -223,7 +223,7 @@ export const LOCALES = {
     "editor.readonly": "Read-only: changes cannot be saved.",
     "editor.lines": "{n} lines",
 
-    "footer.version": "nullops {v}",
+    "footer.version": "NullOps v{v} by M4v3r1ck",
     "viewer.prev": "Previous (←)",
     "viewer.next": "Next (→)",
     "viewer.position": "{i} of {n}",
@@ -477,7 +477,7 @@ export const LOCALES = {
     "editor.readonly": "Somente leitura: as alterações não podem ser salvas.",
     "editor.lines": "{n} linhas",
 
-    "footer.version": "nullops {v}",
+    "footer.version": "NullOps v{v} by M4v3r1ck",
     "viewer.prev": "Anterior (←)",
     "viewer.next": "Próximo (→)",
     "viewer.position": "{i} de {n}",

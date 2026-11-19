@@ -220,7 +220,14 @@ export default function AppLayout({ darkMode, setDarkMode }) {
             <span className="truncate text-red-500">{t("app.plain")}</span>
           </>
         )}
-        <span className="ml-auto">{tf("footer.version", { v: user.version })}</span>
+        <a
+          href="https://github.com/helviojunior/nullops"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="ml-auto"
+        >
+          {tf("footer.version", { v: user.version })}
+        </a>
       </footer>
     </div>
   );

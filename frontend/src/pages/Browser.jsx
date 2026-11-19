@@ -62,6 +62,23 @@ import {
 
 const validName = (n) => !!n && n !== "." && n !== ".." && !/[\\/\0]/.test(n);
 
+// How often the idle folder view re-checks the server for changes.
+const POLL_MS = 15000;
+
+// A compact fingerprint of a listing: changes iff a child was added, removed,
+// renamed, resized, re-stamped or re-permissioned. Used to refresh the view
+// only when something actually moved, so polling never disturbs the current
+// selection or scroll position.
+const listingSig = (l) =>
+  l
+    ? JSON.stringify([
+        l.dir_count,
+        l.file_count,
+        l.total_size,
+        (l.entries || []).map((e) => [e.path, e.size, e.mtime_str, e.perms, e.is_dir]),
+      ])
+    : "";
+
 function IconButton({ title, onClick, children, danger }) {
   return (
     <button
@@ -212,6 +229,45 @@ export default function Browser() {
     window.addEventListener("nullops:changed", onChanged);
     return () => window.removeEventListener("nullops:changed", onChanged);
   }, [load]);
+
+  // Live refresh: while the folder view just sits open on screen, quietly
+  // re-list the current folder every 15s and swap in the result only if a
+  // child changed. It stays idle while the tab is hidden, while search results
+  // are shown, and while a load/action is already in flight; returning to the
+  // tab checks once right away. The poll never touches loading, selection or
+  // scroll — only the data behind them.
+  const pollState = useRef({});
+  pollState.current = { loading, results, listing };
+  useEffect(() => {
+    if (!ready) return undefined;
+    let stopped = false;
+    const tick = async () => {
+      const s = pollState.current;
+      if (stopped || s.loading || s.results || document.visibilityState !== "visible") return;
+      const mine = loadSeq.current; // a navigation or action in flight wins
+      try {
+        const res = await run((c) => c.call("list", { path }));
+        if (stopped || mine !== loadSeq.current) return;
+        const cur = pollState.current;
+        if (cur.loading || cur.results) return;
+        if (listingSig(res) !== listingSig(cur.listing)) {
+          setListing(res);
+          tree.update(path, res.entries);
+        }
+      } catch {
+        /* transient (offline, 5xx, …): keep the view and try next tick */
+      }
+    };
+    const id = setInterval(tick, POLL_MS);
+    const onVisible = () => document.visibilityState === "visible" && tick();
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      stopped = true;
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [path, ready, run, tree.update]);
 
   const allEntries = useMemo(() => (results ? results : listing?.entries || []), [results, listing]);
   const entries = useMemo(() => {
