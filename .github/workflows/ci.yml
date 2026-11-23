@@ -28,7 +28,7 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v6
+      uses: actions/checkout@v7
       with:
         fetch-depth: 0  # `git rev-parse` in the Makefile and full history for version info
 
@@ -118,7 +118,7 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v6
+      uses: actions/checkout@v7
       with:
         fetch-depth: 0  # trufflehog scans the commit range
 
